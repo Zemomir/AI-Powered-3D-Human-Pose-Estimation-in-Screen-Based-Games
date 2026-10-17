@@ -35,7 +35,7 @@ public class Arayuz : MonoBehaviour
     void LateUpdate()
     {
         if (motor == null) return;
-        if ((oncekiHal == Motor.Durum.Ayarlaniyor || oncekiHal == Motor.Durum.Bekliyor) && motor.Hal == Motor.Durum.Suruyor)
+        if (oncekiHal != Motor.Durum.Suruyor && motor.Hal == Motor.Durum.Suruyor && motor.Sure < 0.1f)
             baslaSon = Time.unscaledTime + 1f;
         oncekiHal = motor.Hal;
     }

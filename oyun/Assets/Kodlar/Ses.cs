@@ -12,6 +12,7 @@ public class Ses : MonoBehaviour
     AudioSource kaynak;
     AudioClip topla, basla, bitis;
     Motor.Durum oncekiHal;
+    bool klavyeKullanildi;
 
     void Awake()
     {
@@ -48,12 +49,13 @@ public class Ses : MonoBehaviour
     void LateUpdate()
     {
         if (motor == null) return;
-        if ((oncekiHal == Motor.Durum.Ayarlaniyor || oncekiHal == Motor.Durum.Bekliyor) && motor.Hal == Motor.Durum.Suruyor) Cal(basla);
+        if (motor.Hal != Motor.Durum.Bitti && alici != null && alici.KlavyeModu) klavyeKullanildi = true;
+        if (oncekiHal != Motor.Durum.Suruyor && motor.Hal == Motor.Durum.Suruyor && motor.Sure < 0.1f) Cal(basla);
         if (oncekiHal != Motor.Durum.Bitti && motor.Hal == Motor.Durum.Bitti)
         {
             Cal(bitis);
             bool otopilot = Array.IndexOf(Environment.GetCommandLineArgs(), "-otopilot") >= 0;
-            bool rekorUygun = (alici == null || !alici.KlavyeModu) && !otopilot;
+            bool rekorUygun = !klavyeKullanildi && !otopilot;
             YeniRekor = rekorUygun && float.IsFinite(motor.Sure) && motor.Sure > 0 && (EnIyiSure <= 0 || motor.Sure < EnIyiSure);
             if (YeniRekor)
             {
@@ -65,7 +67,7 @@ public class Ses : MonoBehaviour
         oncekiHal = motor.Hal;
     }
 
-    void Sifirla() { YeniRekor = false; oncekiHal = Motor.Durum.Bekliyor; }
+    void Sifirla() { YeniRekor = false; klavyeKullanildi = false; oncekiHal = Motor.Durum.Bekliyor; }
     public void Topla() { Cal(topla); }
     void Cal(AudioClip klip) { if (SesAcik && kaynak != null && klip != null) kaynak.PlayOneShot(klip); }
 

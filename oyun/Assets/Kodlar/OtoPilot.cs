@@ -9,7 +9,6 @@ using UnityEngine;
 public class OtoPilot : MonoBehaviour
 {
     public Motor motor;
-    public Yildizlar yildizlar;
 
     const string AdresArgumani = "-otopilotOfset";
     UdpClient istemci;
@@ -33,7 +32,7 @@ public class OtoPilot : MonoBehaviour
                 float.IsFinite(deger)) ofset = deger;
 
         istemci = new UdpClient();
-        int port = FindObjectOfType<HareketAlici>()?.port ?? 5065;
+        int port = FindFirstObjectByType<HareketAlici>()?.port ?? 5065;
         hedef = new IPEndPoint(IPAddress.Loopback, port);
     }
 
@@ -43,12 +42,17 @@ public class OtoPilot : MonoBehaviour
         sonrakiGonderim = Time.realtimeSinceStartup + 1f / 30f;
 
         float egim = 0f, one = 0f;
-        if (!(Time.realtimeSinceStartup < 6f && motor.Hal == Motor.Durum.Ayarlaniyor))
+        if (motor.Hal != Motor.Durum.Suruyor)
+        {
+            if (motor.Hal == Motor.Durum.Bekliyor || motor.Hal == Motor.Durum.Bitti)
+                ipucu = motor.yol != null ? motor.yol.BaslangicIndeksi : -1;
+        }
+        else
         {
             Yol yol = motor.yol;
             if (yol != null && yol.Noktalar != null && yol.Noktalar.Count > 1)
             {
-                if (ipucu < 0 || motor.Hal != Motor.Durum.Suruyor) ipucu = yol.BaslangicIndeksi;
+                if (ipucu < 0) ipucu = yol.BaslangicIndeksi;
                 int indeks = yol.EnYakin(motor.transform.position, ipucu, out _);
                 ipucu = indeks;
                 int hedefIndeks = Mathf.Clamp(indeks + 8, 0, yol.Noktalar.Count - 1);
