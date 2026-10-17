@@ -308,7 +308,7 @@ def komut_izle(kanal, bekleyen, dur):
             bekleyen.put(mesaj)
 
 
-def komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme):
+def komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme, arama_sonrasi=False):
     yeniden = False
     while bekleyen is not None and not dur.is_set():
         try:
@@ -316,7 +316,11 @@ def komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme):
         except queue.Empty:
             break
         komut, deger = mesaj.get("komut"), mesaj.get("deger")
-        if komut == "yeniden_ara":
+        if komut == "cik":
+            dur.set()
+        elif arama_sonrasi and komut in ("yeniden_ara", "kalibre"):
+            continue  # Arama boyunca biriken istekler yeni kamerayı tekrar kapatmasın.
+        elif komut == "yeniden_ara":
             yeniden = True
             kal.sifirla()
             isleyici.sifirla()
@@ -335,8 +339,8 @@ def komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme):
     return aci, onizleme, yeniden
 
 
-def kareler_gecerli(ornekler):
-    """Küçük gri kare örnekleri: boş, karanlık ve sabit akışları saf hesapla ele."""
+def kareler_gecerli(ornekler, karanliga_izin=False):
+    """Boş ve sabit akışları ele; karanlık canlı akışa yalnız geri dönüşte izin ver."""
     if len(ornekler) < 3 or not ornekler[0]:
         return False
     boy = len(ornekler[0])
@@ -345,7 +349,7 @@ def kareler_gecerli(ornekler):
     parlaklik = sum(sum(k) for k in ornekler) / (boy * len(ornekler))
     degisim = max(sum(abs(a - b) for a, b in zip(ornekler[0], k)) / boy
                   for k in ornekler[1:])
-    return parlaklik >= 12 and degisim >= 0.8
+    return (karanliga_izin or parlaklik >= 12) and degisim >= 0.8
 
 
 def kisi_dik(n):
@@ -370,6 +374,7 @@ def kisi_dik(n):
 def kamera_bul(telefon, dur, sinif, secenek, telefon_durumu=None):
     """İlk dik kişiyi, yoksa ilk canlı kamerayı açık nesnesiyle döndürür."""
     acik, secilen, ilk, telefon_kamerasi = [], None, None, None
+    karanlik, kopan, etiketler = [], [], {}
     telefon_durumu = telefon_durumu if telefon_durumu is not None else {"yeniden_ac": 0}
 
     def kapat(kamera):
@@ -401,6 +406,8 @@ def kamera_bul(telefon, dur, sinif, secenek, telefon_durumu=None):
                 acik.append(kamera)
                 if isinstance(kaynak, str):
                     telefon_kamerasi = kamera
+                etiket = f"laptop:{kaynak}" if isinstance(kaynak, int) else "telefon"
+                etiketler[kamera] = etiket
                 kareler, ornekler, son_no = [], [], -1
                 bitis = time.monotonic() + 1.2
                 while not dur.is_set() and time.monotonic() < bitis:
@@ -413,15 +420,23 @@ def kamera_bul(telefon, dur, sinif, secenek, telefon_durumu=None):
                     dur.wait(0.1)
                 if dur.is_set():
                     return None
-                if not kamera.calisiyor or not kareler_gecerli(ornekler):
+                canli_kareler = kareler_gecerli(ornekler, karanliga_izin=True)
+                if not kamera.calisiyor or not canli_kareler:
+                    if canli_kareler and not kamera.calisiyor:
+                        kopan.append(etiket)
                     kapat(kamera)
                     acik.remove(kamera)
                     continue
-                etiket = f"laptop:{kaynak}" if isinstance(kaynak, int) else "telefon"
                 acilar = (0, 90, 270, 180) if isinstance(kaynak, int) else (90, 270, 0)
-                if ilk is None:
+                if not kareler_gecerli(ornekler):
+                    parlaklik = sum(sum(k) for k in ornekler) / (len(ornekler) * len(ornekler[0]))
+                    karanlik.append((parlaklik, (kamera, etiket, acilar[0])))
+                    continue  # Açık tut: daha iyi kaynak bulunamazsa yeniden bağlantı gerekmesin.
+                if ilk is None or not ilk[0].calisiyor:
                     ilk = (kamera, etiket, acilar[0])
                 for aci in acilar:
+                    if not kamera.calisiyor:
+                        break
                     for kare in (kareler[0], kareler[len(kareler) // 2], kareler[-1]):
                         if dur.is_set():
                             return None
@@ -429,15 +444,27 @@ def kamera_bul(telefon, dur, sinif, secenek, telefon_durumu=None):
                             kare = cv2.rotate(kare, DONDURME[aci])
                         rgb = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))
                         sonuc = model.detect(rgb)
+                        if not kamera.calisiyor:
+                            break
                         if sonuc.pose_landmarks and kisi_dik(sonuc.pose_landmarks[0]):
                             secilen = kamera
                             return kamera, etiket, aci
                 if kamera is not ilk[0]:
+                    if not kamera.calisiyor:
+                        kopan.append(etiket)
                     kapat(kamera)
                     acik.remove(kamera)
         if ilk is not None and ilk[0].calisiyor:
             secilen = ilk[0]
             return ilk
+        for _, aday in sorted(karanlik, key=lambda a: a[0], reverse=True):
+            if aday[0].calisiyor:
+                secilen = aday[0]
+                return aday
+        kopan.extend(etiketler[k] for k in acik if not k.calisiyor)
+        if kopan:
+            print("Kamera aramada bağlantıyı kaybetti: " + ", ".join(dict.fromkeys(kopan)), file=sys.stderr)
+            raise SystemExit(2)
         sebep = f", telefon {telefon} yanıt vermedi veya geçerli görüntü vermedi" if telefon else ", telefon adresi verilmedi"
         print("Kamera bulunamadı: laptop kamerası yok veya geçerli görüntü vermedi" + sebep, file=sys.stderr)
         raise SystemExit(2)
@@ -450,25 +477,47 @@ def kamera_bul(telefon, dur, sinif, secenek, telefon_durumu=None):
                 kapat(kamera)
 
 
-def arayarak_ac(telefon, dur, sinif, secenek, soket, kayit_durumu, telefon_durumu):
-    """OpenCV açılırken ve IMAGE tespiti sürerken oyuna arama durumu bildir."""
-    bitti = threading.Event()
-    kayit_durumu.pop("kamera_bilgisi", None)
+class AramaBildirimi:
+    """Kamera kapanışı, arama ve ilk VIDEO sonucu boyunca kesintisiz durum gönderir."""
+    def __init__(self, dur, soket, kayit_durumu):
+        self.dur, self.soket, self.kayit_durumu = dur, soket, kayit_durumu
+        self.bitti, self.bildiren = threading.Event(), None
 
-    def bildir():
-        while not dur.is_set() and not bitti.is_set():
-            mesaj = sinyal_yok(time.monotonic())
-            mesaj["durum"] = "araniyor"
-            gonder(soket, mesaj, kayit_durumu, {"saat": round(time.time(), 3)})
-            bitti.wait(SESSIZ_ARALIK_SN)
+    def bildir(self):
+        mesaj = sinyal_yok(time.monotonic())
+        mesaj["durum"] = "araniyor"
+        gonder(self.soket, mesaj, self.kayit_durumu, {"saat": round(time.time(), 3)})
 
-    bildiren = threading.Thread(target=bildir, daemon=True)
-    bildiren.start()
+    def _izle(self):
+        while not self.bitti.wait(SESSIZ_ARALIK_SN) and not self.dur.is_set():
+            self.bildir()
+
+    def baslat(self):
+        if self.bildiren is not None or self.dur.is_set():
+            return
+        self.kayit_durumu.pop("kamera_bilgisi", None)
+        self.bitti.clear()
+        self.bildir()
+        self.bildiren = threading.Thread(target=self._izle, daemon=True)
+        self.bildiren.start()
+
+    def durdur(self):
+        if self.bildiren is not None:
+            self.bitti.set()
+            self.bildiren.join()
+            self.bildiren = None
+
+
+def arayarak_ac(telefon, dur, sinif, secenek, soket, kayit_durumu, telefon_durumu, bildirim=None):
+    """Tek başına aramada bildirimi yönet; ana akışta ilk VIDEO sonucuna dek sürdür."""
+    kendi_bildirimi = bildirim is None
+    bildirim = bildirim if bildirim is not None else AramaBildirimi(dur, soket, kayit_durumu)
+    bildirim.baslat()
     try:
         return kamera_bul(telefon, dur, sinif, secenek, telefon_durumu)
     finally:
-        bitti.set()
-        bildiren.join()
+        if kendi_bildirimi:
+            bildirim.durdur()
 
 
 def kamera_ac(kaynak, dur, sinif):
@@ -539,7 +588,7 @@ def main():
     if args.ebeveyn is not None:
         izleyici = threading.Thread(target=ebeveyn_izle, args=(args.ebeveyn, dur), daemon=True)
         izleyici.start()
-    kamera = soket = kanal = komutcu = None
+    kamera = soket = kanal = komutcu = bildirim = None
     bekleyen = queue.Queue()
     kayit_durumu = {"kayit": None, "yazici": None, "son_flush": time.monotonic(), "uyari": False}
     try:
@@ -558,6 +607,7 @@ def main():
             komutcu = threading.Thread(target=komut_izle, args=(kanal, bekleyen, dur), daemon=True)
             komutcu.start()
         soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        bildirim = AramaBildirimi(dur, soket, kayit_durumu)
         olcum_dizini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "olcumler")
         csv_yolu = os.path.join(olcum_dizini, time.strftime("oyun_%Y%m%d_%H%M%S.csv"))
         try:
@@ -573,9 +623,16 @@ def main():
             kayit_durumu["kayit"] = kayit_durumu["yazici"] = None
         onizleme, telefon_durumu = bool(args.onizleme), {"yeniden_ac": 0}
         while not dur.is_set():
+            bildirim.baslat()
+            if kamera is not None:
+                kamera.kapat()
+                kamera = None
+                if etiket == "telefon":
+                    telefon_durumu["yeniden_ac"] = time.monotonic() + 15
+                cv2.destroyAllWindows()
             if kaynak == "oto":
                 secim = arayarak_ac(args.telefon, dur, lambda k: SonKare(k, sessiz=True),
-                                   arama_secenek, soket, kayit_durumu, telefon_durumu)
+                                   arama_secenek, soket, kayit_durumu, telefon_durumu, bildirim)
                 if secim is None:
                     return
                 kamera, etiket, aci = secim
@@ -584,22 +641,23 @@ def main():
                 if kamera is None:
                     return
                 etiket = f"laptop:{kaynak}" if isinstance(kaynak, int) else "telefon"
+            aci, onizleme, _ = komutlari_oku(bekleyen, Kalibrasyon(), HareketIsleyici(), dur,
+                                           aci, onizleme, arama_sonrasi=True)
+            if dur.is_set():
+                break
             kayit_durumu["kamera_bilgisi"] = {"kaynak": etiket, "aci": aci}
             print(f"KAYNAK {etiket} aci={aci}", flush=True)
-            yeniden = dongu(kamera, secenek, aci, soket, kayit_durumu, onizleme, bekleyen, dur)
+            yeniden = dongu(kamera, secenek, aci, soket, kayit_durumu, onizleme, bekleyen, dur, bildirim)
             if yeniden is None:
                 break
             onizleme = yeniden
-            kamera.kapat()
-            kamera = None
-            if etiket == "telefon":
-                telefon_durumu["yeniden_ac"] = time.monotonic() + 15
-                if args.telefon is None and kaynak != "oto":
-                    args.telefon = kaynak
+            if etiket == "telefon" and args.telefon is None and kaynak != "oto":
+                args.telefon = kaynak
             kaynak = "oto"
-            cv2.destroyAllWindows()
     finally:
         dur.set()
+        if bildirim is not None:
+            bildirim.durdur()
         if izleyici is not None:
             izleyici.join(timeout=1.1)
         if kanal is not None:
@@ -649,7 +707,8 @@ def sinyal_yok(simdi, kalibre=False, donuk=False):
             "durum": "donuk" if donuk else "kisi_yok"}
 
 
-def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleyen=None, dur=None):
+def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleyen=None, dur=None,
+          bildirim=None):
     dur = dur if dur is not None else threading.Event()
     son_no, son_ts = 0, 0
     kal = Kalibrasyon()
@@ -664,6 +723,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
             if kayit_durumu is not None and "kamera_bilgisi" in kayit_durumu:
                 kayit_durumu["kamera_bilgisi"]["aci"] = aci
             if yeniden:
+                if bildirim is not None:
+                    bildirim.baslat()  # VIDEO modelinin kapanışı da uzun sürebilir.
                 return onizleme
             if (aci, onizleme) != (onceki_aci, onceki_onizleme):
                 uyari_gosterildi = False
@@ -677,6 +738,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
                 simdi = time.monotonic()
                 if simdi - kare_zamani > DONUK_ESIK_SN and simdi - son_sessiz >= SESSIZ_ARALIK_SN:
                     # Akış dondu: susmak oyunu son değerde bırakır, açıkça "sinyal yok" de.
+                    if bildirim is not None:
+                        bildirim.durdur()
                     gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu, {"saat": round(time.time(), 3)})
                     son_sessiz = simdi
                     isleyici.sifirla()
@@ -740,6 +803,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
                 "sag_bilek_gor": sag_gor,
                 "ham_omuz_egim": round(ham_omuz_egim, 2) if ham_omuz_egim is not None else None,
             }
+            if bildirim is not None:
+                bildirim.durdur()  # İlk sonuç hazır; CSV'ye iki iş parçacığı aynı anda yazmasın.
             gonder(soket, mesaj, kayit_durumu, ek)
 
             if not onizleme:

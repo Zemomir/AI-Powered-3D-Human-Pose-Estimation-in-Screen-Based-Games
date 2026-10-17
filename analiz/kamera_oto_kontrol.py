@@ -7,6 +7,7 @@ from pathlib import Path
 import queue
 import sys
 import threading
+import time
 from types import SimpleNamespace as N
 from unittest.mock import patch
 
@@ -29,6 +30,9 @@ def saf_kontroller():
     assert not h.kareler_gecerli([[100, 140]] * 12)
     assert not h.kareler_gecerli([[100], [100.2], [100.3]])
     assert h.kareler_gecerli([[100, 140], [103, 141], [101, 144]])
+    assert h.kareler_gecerli([[2], [3], [2]], karanliga_izin=True)
+    assert not h.kareler_gecerli([[3]] * 12, karanliga_izin=True)
+    assert not h.kareler_gecerli([], karanliga_izin=True)
     n = noktalar()
     assert h.kisi_dik(n)
     for p in n:
@@ -49,7 +53,7 @@ def saf_kontroller():
     n[23].x = n[24].x = .9
     n[23].y = n[24].y = .41
     assert not h.kisi_dik(n)
-    print("Saf_kamera_kontrolleri=GECTI (15)")
+    print("Saf_kamera_kontrolleri=GECTI (18)")
 
 
 class Kare:
@@ -84,21 +88,31 @@ def arama_kontrolu(ayarlar, hedef=None, iptal=None, bekle=0, hata=False):
             if kaynak not in ayarlar:
                 raise SystemExit(2)
             self.kaynak, self.tur = kaynak, ayarlar[kaynak]
-            self.no, self.kapanis, self.calisiyor = 0, 0, True
+            self.no, self.kapanis, self._calisiyor = 0, 0, True
+            self.baslangic = dur.zaman
             acilan.append(self)
+
+        @property
+        def calisiyor(self):
+            omur = .6 if self.tur == "olcumde_kopan" else 1.4
+            return self._calisiyor and not ("kopan" in self.tur and dur.zaman - self.baslangic >= omur)
 
         def al(self):
             self.no += 1
-            if self.tur == "bos":
+            if self.tur == "bos" or not self.calisiyor:
                 return self.no, None, dur.zaman
-            deger = 2 + self.no % 2 if self.tur == "karanlik" else 100
-            if self.tur == "canli":
+            deger = 100
+            if self.tur.startswith("karanlik"):
+                deger = (7 if self.tur == "karanlik_parlak" else 2)
+                if self.tur != "karanlik_sabit":
+                    deger += self.no % 2
+            elif self.tur == "canli" or "kopan" in self.tur:
                 deger += 3 * (self.no % 2)
             return self.no, Kare(self.kaynak, deger), dur.zaman
 
         def kapat(self):
             self.kapanis += 1
-            self.calisiyor = False
+            self._calisiyor = False
 
     class Model:
         def __enter__(self):
@@ -147,12 +161,24 @@ def sahte_kontroller():
     s, _, _, ac = arama_kontrolu({0: "karanlik", 1: "logo", 2: "bos", "http://telefon/video": "canli"}, bekle=15)
     assert s[1:] == ("telefon", 90) and ac[-1][1] >= 15
     s, kod, sebep, _ = arama_kontrolu({0: "karanlik", 1: "logo", 2: "bos"})
+    assert s[1:] == ("laptop:0", 0) and kod is None and not sebep
+    s, _, _, _ = arama_kontrolu({0: "karanlik", 1: "karanlik_parlak", 2: "karanlik_sabit", 3: "bos"})
+    assert s[1:] == ("laptop:1", 0)  # Değişmeyen kare, karanlık geri dönüşte de elenir.
+    s, _, _, _ = arama_kontrolu({0: "karanlik_parlak", 1: "canli"})
+    assert s[1:] == ("laptop:1", 0)
+    s, _, _, _ = arama_kontrolu({0: "karanlik", "http://telefon/video": "karanlik_parlak"})
+    assert s[1:] == ("telefon", 90)
+    s, kod, sebep, _ = arama_kontrolu({0: "karanlik_sabit", 1: "logo", 2: "bos"})
     assert s is None and kod == 2 and "Kamera bulunamadı" in sebep and "telefon http://telefon/video" in sebep
+    for tur in ("kopan", "olcumde_kopan", "karanlik_kopan"):
+        s, kod, sebep, _ = arama_kontrolu({0: tur, 1: "logo"})
+        assert s is None and kod == 2
+        assert sebep.strip() == "Kamera aramada bağlantıyı kaybetti: laptop:0"
     s, _, _, _ = arama_kontrolu({0: "canli"}, iptal=.3)
     assert s is None
     s, _, _, _ = arama_kontrolu({0: "canli"}, hata=True)
     assert s is None
-    print("Sahte_arama=GECTI (7 senaryo; tek acilis, secilmeyenler kapali, Busy beklemesi, kod 2)")
+    print("Sahte_arama=GECTI (14 senaryo; karanlik geri donus, kopma, tek acilis, Busy, kapanis)")
 
 
 def mesaj_komut_kontrolu():
@@ -162,6 +188,16 @@ def mesaj_komut_kontrolu():
     q.put({"komut": "yeniden_ara"})
     assert h.komutlari_oku(q, kal, isleyici, threading.Event(), 90, False) == (90, False, True)
     assert not kal.tamam and isleyici.duz_one is None
+    kal.notr_egim, isleyici.duz_one = 1, .1
+    for komut in ("yeniden_ara", "kalibre", "yeniden_ara"):
+        q.put({"komut": komut})
+    q.put({"komut": "onizleme", "deger": 1})
+    assert h.komutlari_oku(q, kal, isleyici, threading.Event(), 90, False, arama_sonrasi=True) == (90, True, False)
+    assert q.empty() and kal.tamam and isleyici.duz_one == .1
+    q.put({"komut": "cik"})
+    dur = threading.Event()
+    h.komutlari_oku(q, kal, isleyici, dur, 90, False, arama_sonrasi=True)
+    assert dur.is_set() and q.empty()
     tampon, mesajlar = io.StringIO(), []
     yazici = csv.DictWriter(tampon, fieldnames=list(h.sinyal_yok(0)) + ["aci", "kaynak"])
     durum = {"kamera_bilgisi": {"kaynak": "telefon", "aci": 90}, "yazici": yazici,
@@ -169,7 +205,7 @@ def mesaj_komut_kontrolu():
     h.gonder(N(sendto=lambda veri, _: mesajlar.append(json.loads(veri))), h.sinyal_yok(1), durum)
     assert mesajlar[0]["kaynak"] == "telefon" and mesajlar[0]["aci"] == 90
     assert tampon.getvalue().rstrip().endswith(",90,telefon")
-    print("Mesaj_CSV_yeniden_ara=GECTI")
+    print("Mesaj_CSV_yeniden_ara=GECTI (arama kuyrugu, onizleme, cik)")
 
 
 def arama_bildirim_kontrolu():
@@ -193,8 +229,116 @@ def arama_bildirim_kontrolu():
     print("Arama_bildirimi=GECTI (ardisik 3 araniyor mesaji)")
 
 
+def gecis_bildirim_kontrolu():
+    """Gerçek main/dongu; kamera, model, UDP ve dosya işlemleri tamamen sahtedir."""
+    mesajlar, asamalar, kameralar = [], [], []
+    komutcu_hazir = threading.Event()
+    durum = {"arama": 0, "sonuc": 0}
+
+    def beklet(ad, sn=.65):
+        baslangic = time.monotonic()
+        time.sleep(sn)
+        gelen = [m for t, m in mesajlar if t >= baslangic]
+        assert len(gelen) >= 3 and all(m["durum"] == "araniyor" for m in gelen), ad
+        asamalar.append(ad)
+
+    class Kamera:
+        calisiyor, hata = True, None
+
+        def __init__(self):
+            self.no, self.kapanis = 0, 0
+            kameralar.append(self)
+
+        def al(self):
+            self.no += 1
+            return self.no, N(shape=(480, 640, 3)), time.monotonic()
+
+        def kapat(self):
+            self.kapanis += 1
+            if not durum["dur"].is_set():
+                beklet("eski_kamera_kapanisi")
+            self.calisiyor = False
+
+    class Model:
+        def __init__(self, _):
+            beklet("VIDEO_yaratimi")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            if not durum["dur"].is_set():
+                beklet("VIDEO_kapanisi")
+
+        def detect_for_video(self, *_):
+            beklet("ilk_VIDEO_sonucu", .35)
+            return N(pose_landmarks=[], pose_world_landmarks=[])
+
+    def komut_izle(_, q, dur):
+        durum.update(q=q, dur=dur)
+        komutcu_hazir.set()
+        dur.wait()
+
+    def kamera_bul(*_):
+        assert komutcu_hazir.wait(1)
+        durum["arama"] += 1
+        assert durum["arama"] <= 2, "Aramada biriken yeniden_ara yeni kamerayı kapattı"
+        beklet("kamera_aramasi")
+        for komut in ("yeniden_ara", "kalibre", "yeniden_ara"):
+            durum["q"].put({"komut": komut})
+        durum["q"].put({"komut": "onizleme", "deger": 0})
+        return Kamera(), "telefon", 90
+
+    class Soket:
+        def bind(self, _):
+            pass
+
+        def settimeout(self, _):
+            pass
+
+        def close(self):
+            pass
+
+        def sendto(self, veri, _):
+            mesaj = json.loads(veri)
+            mesajlar.append((time.monotonic(), mesaj))
+            if mesaj["durum"] != "araniyor" and not durum["dur"].is_set():
+                durum["sonuc"] += 1
+                if durum["sonuc"] == 1:
+                    durum["q"].put({"komut": "yeniden_ara"})
+                else:
+                    durum["dur"].set()
+
+    cv = N(destroyAllWindows=lambda: None, flip=lambda k, _: k, rotate=lambda k, _: k,
+           cvtColor=lambda k, _: k, COLOR_BGR2RGB=1)
+    mp = N(Image=lambda **kw: kw["data"], ImageFormat=N(SRGB=0))
+    vision = N(PoseLandmarker=N(create_from_options=Model), PoseLandmarkerOptions=lambda **kw: N(**kw),
+               RunningMode=N(IMAGE="IMAGE", VIDEO="VIDEO"))
+    kt = N(DONDURME={0: None, 90: 90}, DONMA_SANIYE=1, MODEL=Path("sahte.task"),
+           SonKare=lambda *_args, **_kw: (_ for _ in ()).throw(AssertionError("Gerçek açılış denenmemeli")),
+           ciz=None, omuz_egimi=None)
+    moduller = {"cv2": cv, "mediapipe": mp, "numpy": N(), "kamera_test": kt,
+                "mediapipe.tasks": N(), "mediapipe.tasks.python": N(BaseOptions=lambda **kw: N(**kw), vision=vision)}
+    ek = dict(cv2=cv, mp=mp, np=N(), vision=vision, DONDURME=kt.DONDURME,
+              DONMA_SANIYE=1, ciz=None, omuz_egimi=None,
+              socket=N(socket=lambda *_: Soket(), AF_INET=0, SOCK_DGRAM=0),
+              komut_izle=komut_izle, kamera_bul=kamera_bul)
+    with patch.dict(sys.modules, moduller), patch.multiple(h, create=True, **ek), \
+            patch.object(sys, "argv", ["hareket_yayini.py", "oto", "--onizleme", "1"]), \
+            patch.object(h.os, "makedirs"), patch.object(h, "open", return_value=io.StringIO(), create=True), \
+            contextlib.redirect_stdout(io.StringIO()):
+        h.main()
+    assert durum["arama"] == durum["sonuc"] == 2
+    assert all(k.kapanis == 1 for k in kameralar)
+    assert {"eski_kamera_kapanisi", "kamera_aramasi", "VIDEO_yaratimi", "ilk_VIDEO_sonucu", "VIDEO_kapanisi"} <= set(asamalar)
+    aralik = max(b[0] - a[0] for a, b in zip(mesajlar, mesajlar[1:]))
+    assert aralik < .3, f"En uzun mesaj aralığı: {aralik:.3f} sn"
+    print(f"Gecis_bildirimi=GECTI (en_uzun_mesaj_araligi={aralik:.3f} sn < 0.300 sn; main/dongu)")
+
+
 if __name__ == "__main__":
     saf_kontroller()
     sahte_kontroller()
     mesaj_komut_kontrolu()
     arama_bildirim_kontrolu()
+    gecis_bildirim_kontrolu()

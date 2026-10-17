@@ -20,6 +20,9 @@ public class AnaMenu : MonoBehaviour
     string adres;
     float yerlesme, yerlesSon, kalibreSon;
     int kalibreMesajNo;
+    bool yenidenAraBekleniyor;
+    float yenidenAraSon;
+    int yenidenAraMesajNo;
     Font font;
     Sprite yuvarlak;
     Texture2D yuvarlakDoku;
@@ -87,7 +90,7 @@ public class AnaMenu : MonoBehaviour
         kameraDurumu.resizeTextMaxSize = 34;
         secimBilgisi = Yazi(sol, "", 30, 216, 750, 44, 23);
         secimBilgisi.supportRichText = false;
-        Dugme(sol, "Yeniden ara", 30, 278, 300, 64, () => kopru.YenidenAra());
+        Dugme(sol, "Yeniden ara", 30, 278, 300, 64, YenidenAra);
         var onizlemeAnahtari = Anahtar(sol, "Kamera görüntüsünü göster", 30, 358, 745, onizleme);
         onizlemeAnahtari.onValueChanged.AddListener(v => { onizleme = v; KameraUygula(); });
         Yazi(sol, "Telefon adresi (isteğe bağlı)", 30, 430, 750, 34, 22);
@@ -230,7 +233,7 @@ public class AnaMenu : MonoBehaviour
             alici.Kaynak + (alici.Aci.HasValue ? " · " + alici.Aci.Value + "°" : "") : "";
         bool hazir = alici.Bagli && alici.Durum == "hazir";
         nokta.color = kopru.Hata != null || !kopru.KurulumTamam ? new Color(1f, .35f, .3f) : hazir ? new Color(.35f, .9f, .6f) : vurgu;
-        basla.interactable = hazir && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
+        basla.interactable = !AramaOnayiBekleniyor() && hazir && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
         if (ekran == Ekran.Yerles)
         {
             aciklama.text = "Yerine geç: kameradan 2-3 m uzakta,\nomuzların ve kalçaların görünsün";
@@ -284,8 +287,26 @@ public class AnaMenu : MonoBehaviour
         return DurumYazisi();
     }
 
+    void YenidenAra()
+    {
+        yenidenAraBekleniyor = true;
+        yenidenAraSon = Time.realtimeSinceStartup + 1f;
+        yenidenAraMesajNo = alici.SonMesajNo;
+        basla.interactable = false;
+        kopru.YenidenAra();
+    }
+
+    bool AramaOnayiBekleniyor()
+    {
+        if (yenidenAraBekleniyor && (Time.realtimeSinceStartup >= yenidenAraSon ||
+            (alici.SonMesajNo > yenidenAraMesajNo && alici.Bagli && alici.Durum == "araniyor")))
+            yenidenAraBekleniyor = false;
+        return yenidenAraBekleniyor;
+    }
+
     void Baslat()
     {
+        if (AramaOnayiBekleniyor()) return;
         if (!kopru.KurulumTamam || !kopru.Hazir || !alici.Bagli || alici.Durum != "hazir" || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
         { AnaMenuyeDon(); return; }
         motor.BaslamaIzni = false;
