@@ -4,10 +4,24 @@ using UnityEngine;
 public class KameraTakip : MonoBehaviour
 {
     public Transform hedef;
+    public Motor motor;
+    Camera kamera;
     public float geri = 9f, yukari = 4f, bakisYuksekligi = 1.2f, yumusaklik = 4f;
+
+    void Start()
+    {
+        kamera = GetComponent<Camera>();
+        if (kamera != null) kamera.fieldOfView = 60f;
+    }
 
     void LateUpdate()
     {
+        if (kamera != null && motor != null)
+        {
+            float oran = Mathf.Clamp01(motor.Hiz / Mathf.Max(0.01f, motor.enCokHiz));
+            kamera.fieldOfView = Mathf.Lerp(kamera.fieldOfView, 60f + 10f * oran,
+                1f - Mathf.Exp(-3f * Time.deltaTime));
+        }
         if (hedef == null) return;
         Vector3 ileri = hedef.forward; ileri.y = 0; ileri.Normalize();
         Vector3 istenen = hedef.position - ileri * geri + Vector3.up * yukari;

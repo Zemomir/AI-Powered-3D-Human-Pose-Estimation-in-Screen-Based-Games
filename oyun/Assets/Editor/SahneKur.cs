@@ -26,12 +26,20 @@ public static class SahneKur
         var kirmizi = Malzeme("MotorKirmizi", new Color(0.85f, 0.22f, 0.18f));
         var siyah = Malzeme("Lastik", new Color(0.08f, 0.08f, 0.09f));
         var kask = Malzeme("Kask", new Color(0.18f, 0.45f, 0.85f));
+        var agacGovde = Malzeme("AgacGovde", new Color(0.36f, 0.26f, 0.17f));
+        var yaprak = Malzeme("Yaprak", new Color(0.25f, 0.40f, 0.23f));
+        var kaya = Malzeme("Kaya", new Color(0.43f, 0.45f, 0.42f));
+        var yildiz = Malzeme("Yildiz", new Color(1f, 0.78f, 0.16f));
+        yildiz.EnableKeyword("_EMISSION");
+        yildiz.SetColor("_EmissionColor", new Color(0.25f, 0.17f, 0.02f));
+        EditorUtility.SetDirty(yildiz);
 
         RenderSettings.ambientMode = AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.42f, 0.45f, 0.50f);
         var isik = new GameObject("Gunes").AddComponent<Light>();
         isik.type = LightType.Directional;
         isik.intensity = 1.1f;
+        isik.color = new Color(1f, 0.96f, 0.88f);
         isik.shadows = LightShadows.Soft;
         isik.transform.rotation = Quaternion.Euler(50, -30, 0);
 
@@ -62,25 +70,50 @@ public static class SahneKur
         Parca(PrimitiveType.Cube, govde, new Vector3(0, 0.75f, 0), new Vector3(0.45f, 0.45f, 1.6f), kirmizi, "Kasa");
         Parca(PrimitiveType.Cylinder, govde, new Vector3(0, 0.4f, 0.75f), new Vector3(0.75f, 0.08f, 0.75f), siyah, "OnTeker", new Vector3(0, 0, 90));
         Parca(PrimitiveType.Cylinder, govde, new Vector3(0, 0.4f, -0.75f), new Vector3(0.75f, 0.08f, 0.75f), siyah, "ArkaTeker", new Vector3(0, 0, 90));
+        motor.onTeker = govde.Find("OnTeker");
+        motor.arkaTeker = govde.Find("ArkaTeker");
         Parca(PrimitiveType.Capsule, govde, new Vector3(0, 1.35f, -0.15f), new Vector3(0.45f, 0.45f, 0.45f), kirmizi, "Surucu");
         Parca(PrimitiveType.Sphere, govde, new Vector3(0, 1.95f, -0.05f), new Vector3(0.38f, 0.38f, 0.38f), kask, "Kask");
+
+        var ses = oyun.AddComponent<Ses>();
+        ses.motor = motor;
+        var yildizlar = oyun.AddComponent<Yildizlar>();
+        yildizlar.yol = yol;
+        yildizlar.motor = motor;
+        yildizlar.ses = ses;
+        yildizlar.malzeme = yildiz;
+        var cevre = new GameObject("Cevre").AddComponent<Cevre>();
+        cevre.yol = yol;
+        cevre.agacGovde = agacGovde;
+        cevre.yaprak = yaprak;
+        cevre.kaya = kaya;
 
         var arayuz = oyun.AddComponent<Arayuz>();
         arayuz.alici = alici;
         arayuz.motor = motor;
+        arayuz.yildizlar = yildizlar;
+        arayuz.ses = ses;
 
         var kayit = oyun.AddComponent<OyunKaydi>();
         kayit.alici = alici;
         kayit.motor = motor;
+        kayit.yildizlar = yildizlar;
 
         var kamera = new GameObject("Kamera", typeof(Camera), typeof(AudioListener));
         kamera.tag = "MainCamera";
         var cam = kamera.GetComponent<Camera>();
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.62f, 0.78f, 0.92f);
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.Linear;
+        RenderSettings.fogStartDistance = 70f;
+        RenderSettings.fogEndDistance = 260f;
+        RenderSettings.fogColor = cam.backgroundColor;
         cam.farClipPlane = 600;
         kamera.transform.position = new Vector3(0, 4, -9);
-        kamera.AddComponent<KameraTakip>().hedef = motorGo.transform;
+        var takip = kamera.AddComponent<KameraTakip>();
+        takip.hedef = motorGo.transform;
+        takip.motor = motor;
 
         EditorSceneManager.SaveScene(sahne, SAHNE);
         EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(SAHNE, true) };

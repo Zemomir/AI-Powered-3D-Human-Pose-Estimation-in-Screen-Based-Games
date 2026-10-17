@@ -6,6 +6,8 @@ public class Motor : MonoBehaviour
 {
     public HareketAlici alici;
     public Yol yol;
+    public Transform onTeker, arkaTeker;
+    public event System.Action Sifirlandi;
     public Transform govde;  // görsel olarak yana yatan kısım
 
     [Header("Dönüş")]
@@ -123,6 +125,7 @@ public class Motor : MonoBehaviour
         if (govde != null) govde.localRotation = Quaternion.identity;
         Hal = Durum.Bekliyor;
         ayarIstendi = true;
+        Sifirlandi?.Invoke();
     }
 
     void Update()
@@ -239,6 +242,14 @@ public class Motor : MonoBehaviour
         Yatir(e);
 
         if (yolIndeksi >= yol.Noktalar.Count - 2) { Hal = Durum.Bitti; HedefHiz = 0; }
+    }
+
+    void LateUpdate()
+    {
+        // 0,375 m yarıçap; silindirin yerel Y ekseni motorun soluna bakar.
+        float aci = -Hiz * Time.deltaTime / 0.375f * Mathf.Rad2Deg;
+        if (onTeker != null) onTeker.Rotate(0, aci, 0, Space.Self);
+        if (arkaTeker != null) arkaTeker.Rotate(0, aci, 0, Space.Self);
     }
 
     void Yatir(float egim)
