@@ -1,11 +1,10 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
 Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
-Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz sütunlarını içerir:
+Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz sütunlarını içerir:
     {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031}
   egim : yan eğim, derece; + = kişi sağına eğik (nötr duruşa göre)
-  one  : öne/geriye eğilme, metre; + = öne (omuz ortası kalçaya göre kameraya yaklaştı), nötre göre.
-         2026-10-17 ölçümünde 20° civarı eğilme ~±4 cm verdi. Kalçalar görünmüyorsa null.
+  one  : öne/geriye eğilme, omuz genişliği oranından metre eşdeğeri; + = öne, nötre göre.
   donuk: true ise telefondan kare gelmiyor (Python çalışıyor ama akış dondu).
   Kişi ya da omuzlar görünmüyorsa egim ve one null olur; oyun bunu "sinyal yok" diye ele almalı.
   Kamera donarsa her SESSIZ_ARALIK_SN'de null mesaj, çıkışta da son bir null mesaj gider. Yine de
@@ -26,6 +25,7 @@ import os
 import socket
 import sys
 import time
+import statistics
 
 import cv2
 import mediapipe as mp
@@ -43,22 +43,25 @@ SESSIZ_ARALIK_SN = 0.1
 # ekranda yanlış teşhis ("kamera bağlı değil") yanıp sönmesin.
 DONUK_ESIK_SN = 0.3
 YUMUSATMA = 0.5  # üstel ortalama: 1 = ham, küçüldükçe daha yumuşak ama daha gecikmeli
+ONE_OLCEK = 0.42  # tam_20261017_175142.csv: +%10,6 yaklaşık 4,5 cm; tek kişiden, ileride kişiye göre kalibre edilebilir.
+GERI_OLCEK = 1.0  # geri -%4,3: küçük geriye eğilmede yavaşlama da hızlanma kadar kolay olsun.
 PENCERE = "Fizyo-Oyun hareket yayini"
 
 
 def ham_olcum(sonuc, g, y):
-    """(egim, dz) — görünmeyen kısım None. dz: omuz ortası z - kalça ortası z, metre."""
+    """(egim, omuz_px, dz) döndürür; omuzlar yoksa hepsi None. dz: omuz ortası z - kalça ortası z, metre."""
     if not sonuc.pose_landmarks:
-        return None, None
+        return None, None, None
     n = sonuc.pose_landmarks[0]
     if min(n[i].visibility or 0 for i in OMUZLAR) < MIN_GORUNURLUK:
-        return None, None
+        return None, None, None
     egim = omuz_egimi(n, g, y)
+    omuz_px = math.hypot((n[11].x - n[12].x) * g, (n[11].y - n[12].y) * y)
     dz = None
     if sonuc.pose_world_landmarks and min(n[i].visibility or 0 for i in KALCALAR) >= MIN_GORUNURLUK:
         w = sonuc.pose_world_landmarks[0]
         dz = (w[11].z + w[12].z) / 2 - (w[23].z + w[24].z) / 2
-    return egim, dz
+    return egim, omuz_px, dz
 
 
 class Kalibrasyon:
@@ -66,13 +69,13 @@ class Kalibrasyon:
         self.sifirla()
 
     def sifirla(self):
-        self.ornekler, self.basla, self.notr_egim, self.notr_dz = [], None, None, None
+        self.ornekler, self.basla, self.notr_egim, self.notr_omuz, self.notr_dz = [], None, None, None, None
 
     @property
     def tamam(self):
         return self.notr_egim is not None
 
-    def besle(self, simdi, egim, dz):
+    def besle(self, simdi, egim, omuz_px, dz):
         """Kalibrasyon sürerken örnek toplar. Kişi kaybolursa sayaç baştan başlar."""
         if self.tamam:
             return
@@ -84,11 +87,13 @@ class Kalibrasyon:
         gecen = simdi - self.basla
         if gecen < YERLESME_SN:
             return
-        self.ornekler.append((egim, dz))
+        self.ornekler.append((egim, omuz_px, dz))
         if gecen >= YERLESME_SN + KALIBRASYON_SN:
-            self.notr_egim = sum(e for e, _ in self.ornekler) / len(self.ornekler)
-            dzler = [d for _, d in self.ornekler if d is not None]
-            # Kalçalar kalibrasyonun yarısından azında göründüyse nötr dz güvenilmez; one gönderilmez.
+            self.notr_egim = sum(e for e, _, _ in self.ornekler) / len(self.ornekler)
+            omuzlar = [o for _, o, _ in self.ornekler if o is not None]
+            self.notr_omuz = statistics.median(omuzlar) if omuzlar else None
+            dzler = [d for _, _, d in self.ornekler if d is not None]
+            # Kalçalar kalibrasyonun yarısından azında göründüyse nötr dz güvenilmez.
             self.notr_dz = sum(dzler) / len(dzler) if len(dzler) >= len(self.ornekler) / 2 else None
 
     def kalan(self, simdi):
@@ -116,7 +121,7 @@ def main():
     try:
         os.makedirs(olcum_dizini, exist_ok=True)
         kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
-        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz"), restval="")
+        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz"), restval="")
         csv_yazici.writeheader()
         print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
     except OSError as e:
@@ -206,21 +211,24 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             if sonuc.pose_landmarks:
                 ciz(kare, sonuc.pose_landmarks[0])
 
-            egim, dz = ham_olcum(sonuc, kare.shape[1], kare.shape[0])
+            egim, omuz_px, dz = ham_olcum(sonuc, kare.shape[1], kare.shape[0])
             # NaN/sonsuz değer oyuna gitmesin (JSON'da "NaN" olur, oyunda konumu bozar).
             if egim is not None and not math.isfinite(egim):
-                egim, dz = None, None
+                egim, omuz_px, dz = None, None, None
+            if omuz_px is not None and not math.isfinite(omuz_px):
+                omuz_px = None
             if dz is not None and not math.isfinite(dz):
                 dz = None
-            kal.besle(simdi, egim, dz)
+            kal.besle(simdi, egim, omuz_px, dz)
 
             mesaj = sinyal_yok(simdi, kal.tamam)
             if kal.tamam and egim is not None:
                 e = egim - kal.notr_egim
                 duz_egim = e if duz_egim is None else YUMUSATMA * e + (1 - YUMUSATMA) * duz_egim
                 mesaj["egim"] = round(duz_egim, 2)
-                if dz is not None and kal.notr_dz is not None:
-                    o = -(dz - kal.notr_dz)  # z kameraya yaklaşınca azalır; öne = pozitif olsun
+                if omuz_px is not None and kal.notr_omuz is not None and kal.notr_omuz >= 1:
+                    r = omuz_px / kal.notr_omuz - 1
+                    o = r * ONE_OLCEK if r >= 0 else r * GERI_OLCEK
                     duz_one = o if duz_one is None else YUMUSATMA * o + (1 - YUMUSATMA) * duz_one
                     mesaj["one"] = round(duz_one, 4)
                 else:
@@ -234,6 +242,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 "ham_dz": round(dz, 4) if dz is not None else None,
                 "notr_egim": round(kal.notr_egim, 2) if kal.notr_egim is not None else None,
                 "notr_dz": round(kal.notr_dz, 4) if kal.notr_dz is not None else None,
+                "ham_omuz": round(omuz_px, 2) if omuz_px is not None else None,
+                "notr_omuz": round(kal.notr_omuz, 2) if kal.notr_omuz is not None else None,
             }
             gonder(soket, mesaj, kayit_durumu, ek)
 
@@ -244,10 +254,10 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             else:
                 if mesaj["one"] is not None:
                     one = f"{mesaj['one'] * 100:+.1f} cm"
-                elif kal.notr_dz is None:
-                    one = "kalca notru yok (c: yeniden kalibre)"
+                elif kal.notr_omuz is None or kal.notr_omuz < 1:
+                    one = "omuz notru yok (c: yeniden kalibre)"
                 else:
-                    one = "kalca yok"
+                    one = "omuz yok"
                 durum = f"egim {mesaj['egim']:+.0f} derece   one {one}"
             cv2.putText(kare, durum, (10, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
             cv2.putText(kare, "c: yeniden kalibre   q: cik", (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)

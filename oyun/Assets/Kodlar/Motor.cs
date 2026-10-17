@@ -24,9 +24,9 @@ public class Motor : MonoBehaviour
     public float tabanHiz = 8f;          // m/sn, dik otururken
     public float oneOluBolge = 0.015f;   // metre; 2026-10-17 ölçümünde 20° eğilme ~4 cm verdi
     // Yan ölçümünde öne kayma görüldü (yan_20261017_161252); oyun kaydında virajda geriye de kaydı
-    // (motor_20261017_165341), bu yüzden iki tarafın ölü bölgesi yan eğimle genişler.
-    // Üst sınır: keskin virajda da öne eğilmek hız verebilsin (tam öne eğilme ~4 cm).
-    public float yanEgimOluBolgeEki = 0.001f;  // metre / derece
+    // 2026-10-17 tam ölçümünde öne-geri omuz genişliğine geçildi; yana sızma ≤%17 S, genişleme kapatıldı.
+    // Alan yeniden açılabilsin diye duruyor.
+    public float yanEgimOluBolgeEki = 0f;  // metre / derece
     public float azamiOneOluBolge = 0.03f;     // metre
     // Öne sinyali ayrıca yumuşatılır (zaman sabiti, sn): kare kare oynama hıza geçmesin.
     // Büyütmek titremeyi azaltır ama hız öne eğilmeye geç tepki verir.
