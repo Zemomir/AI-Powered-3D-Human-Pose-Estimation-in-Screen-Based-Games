@@ -18,7 +18,7 @@ public class OyunKaydi : MonoBehaviour
         "saat", "t", "olay", "hal", "bagli", "kalibre", "klavye", "donuk",
         "ham_egim", "ham_one", "egim", "one", "egim_sifir", "one_sifir", "hiz",
         "hedef_hiz", "hiz_hassasiyeti", "donus_hassasiyeti", "yumusatma", "yol_disinda", "ilerleme", "yildiz_toplam",
-        "sol_el", "sag_el", "sol_kalkik", "sag_kalkik", "cak_toplam"
+        "sol_el", "sag_el", "sol_kalkik", "sag_kalkik", "cak_toplam", "hiz_tutuldu"
     };
     StreamWriter yazici;
     float sonSatir, sonFlush;
@@ -63,7 +63,8 @@ public class OyunKaydi : MonoBehaviour
                     (yildizlar != null ? yildizlar.Toplanan : 0).ToString(CultureInfo.InvariantCulture),
                     Say(alici.SolEl), Say(alici.SagEl), Bool(seyirciler != null && seyirciler.SolKalkik),
                     Bool(seyirciler != null && seyirciler.SagKalkik),
-                    (seyirciler != null ? seyirciler.SolCak + seyirciler.SagCak : 0).ToString(CultureInfo.InvariantCulture)
+                    (seyirciler != null ? seyirciler.SolCak + seyirciler.SagCak : 0).ToString(CultureInfo.InvariantCulture),
+                    Bool(alici.HizTutuluyor)
                 }));
                 sonSatir = simdi;
                 if (simdi - sonFlush >= 1f) { yazici.Flush(); sonFlush = simdi; }

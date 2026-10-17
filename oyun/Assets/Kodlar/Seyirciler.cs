@@ -15,7 +15,7 @@ public class Seyirciler : MonoBehaviour
     public Material[] tisortler;
     public Transform solKolKok, sagKolKok;
     public int tarafBasina = 6;
-    public float elEsik = 0f;
+    public float elEsik = -0.3f;
 
     public bool SolKalkik { get; private set; }
     public bool SagKalkik { get; private set; }

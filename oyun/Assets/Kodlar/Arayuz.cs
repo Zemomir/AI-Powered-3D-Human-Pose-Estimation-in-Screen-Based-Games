@@ -101,11 +101,12 @@ public class Arayuz : MonoBehaviour
             sol += $"\nEğim: {motor.DuzeltilmisEgim.Value:+0;-0;0}°" + (motor.DuzeltilmisOne.HasValue ? $"   Öne: {motor.DuzeltilmisOne.Value * 100:+0.0;-0.0;0.0} cm" : "");
         if (alici != null && !alici.KlavyeModu)
             sol += $"\nSıfır: öne {motor.OneSifir * 100:+0.0;-0.0;0.0} cm, eğim {motor.EgimSifir:+0;-0;0}°";
+        if (alici != null && alici.HizTutuluyor) sol += "\nHız tutuluyor (el)";
         if (ses != null) sol += $"\nSes: {(ses.SesAcik ? "açık" : "kapalı")}";
         sol += $"\nsol_el: {ElYazi(alici != null ? alici.SolEl : null)} · {(seyirciler != null && seyirciler.SolKalkik ? "kalkık" : "indi")}";
         sol += $"\nsag_el: {ElYazi(alici != null ? alici.SagEl : null)} · {(seyirciler != null && seyirciler.SagKalkik ? "kalkık" : "indi")}";
-        Kutu(new Rect(20, 92, 420, 365), new Color(0.06f, 0.09f, 0.09f, 0.78f));
-        Golgeli(new Rect(32, 102, 396, 345), sol, kucuk);
+        Kutu(new Rect(20, 92, 420, 390), new Color(0.06f, 0.09f, 0.09f, 0.78f));
+        Golgeli(new Rect(32, 102, 396, 370), sol, kucuk);
     }
 
     string DurumMesaji()
@@ -115,7 +116,7 @@ public class Arayuz : MonoBehaviour
         if (!alici.Bagli) return "Kamera bağlı değil\nhareket_yayini.py çalışıyor mu?";
         if (alici.GoruntuDonuk) return "Telefondan görüntü gelmiyor\nDroidCam açık mı?";
         if (!alici.Kalibre) return "Oynayacağın gibi dur\nayarlanıyor...";
-        if (!alici.Egim.HasValue) return "Kamera seni göremiyor\nomuzların görünsün";
+        if (!alici.Egim.HasValue) return "Kamera seni göremiyor\nomuzların ve kalçaların görünsün";
         if (motor.Hal == Motor.Durum.Ayarlaniyor) return motor.AyarOlcuyor ? "Ölçülüyor... kıpırdama" : $"Oynayacağın gibi dur, kıpırdama\n{Mathf.CeilToInt(motor.AyarKalanSn)}";
         if (motor.YolDisinda) return "Yola dön";
         return null;

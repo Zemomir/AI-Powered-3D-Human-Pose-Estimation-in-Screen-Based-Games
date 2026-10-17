@@ -7,7 +7,7 @@ using System.Threading;
 using UnityEngine;
 
 // Python tarafından (hareket_yayini.py) UDP ile gelen gövde hareketini dinler.
-// Mesaj: {"t": 12.3, "kalibre": true, "egim": 8.2, "one": 0.031}  (egim/one null olabilir)
+// Mesaj: {"t": 12.3, "kalibre": true, "egim": 8.2, "one": 0.031, "tut": false}  (egim/one null olabilir)
 // ZAMAN_ASIMI_SN boyunca mesaj gelmezse "bağlı değil" sayılır: Python çökerse "sinyal yok"
 // bile gönderemez, oyun son eğimde takılı kalmasın diye bu kural oyunda da var.
 public class HareketAlici : MonoBehaviour
@@ -25,6 +25,7 @@ public class HareketAlici : MonoBehaviour
     public float? SolEl => KlavyeModu ? (Input.GetKey(KeyCode.Q) ? 1f : -1.5f) : (Bagli && !donuk ? solEl : null);
     public float? SagEl => KlavyeModu ? (Input.GetKey(KeyCode.E) ? 1f : -1.5f) : (Bagli && !donuk ? sagEl : null);
     public bool GoruntuDonuk => !KlavyeModu && Bagli && donuk;  // Python çalışıyor ama telefondan kare gelmiyor
+    public bool HizTutuluyor => !KlavyeModu && Bagli && kalibre && !donuk && egim.HasValue && one.HasValue && tut;
     public string PortHatasi { get; private set; }               // ekranda gerçek sebep görünsün
 
     UdpClient istemci;
@@ -32,7 +33,7 @@ public class HareketAlici : MonoBehaviour
     readonly object kilit = new object();
     string bekleyenMesaj;
     float sonMesajZamani = -1f;
-    bool kalibre, donuk;
+    bool kalibre, donuk, tut;
     float? egim, one, solEl, sagEl;
     float klavyeEgim, klavyeOne;
 
@@ -74,10 +75,11 @@ public class HareketAlici : MonoBehaviour
     {
         string mesaj;
         lock (kilit) { mesaj = bekleyenMesaj; bekleyenMesaj = null; }
-        if (mesaj != null && Oku(mesaj, out bool k, out float? e, out float? o, out bool d, out float? sol, out float? sag))
+        if (mesaj != null && Oku(mesaj, out bool k, out float? e, out float? o, out bool d, out float? sol, out float? sag, out bool h))
         {
             kalibre = k; egim = e; one = o; donuk = d;
             solEl = sol; sagEl = sag;
+            tut = h;
             sonMesajZamani = Time.realtimeSinceStartup;
         }
 
@@ -101,10 +103,11 @@ public class HareketAlici : MonoBehaviour
 
     // Küçük ve bilinen biçimde bir mesaj: JsonUtility null'ı 0 diye okurdu (0 = dik dur demek),
     // bu yüzden "değer yok" ile "sıfır" ayrı kalsın diye elle okunuyor.
-    static bool Oku(string json, out bool kalibre, out float? egim, out float? one, out bool donuk, out float? solEl, out float? sagEl)
+    static bool Oku(string json, out bool kalibre, out float? egim, out float? one, out bool donuk, out float? solEl, out float? sagEl, out bool tut)
     {
         kalibre = false; egim = null; one = null; solEl = null; sagEl = null;
         donuk = Deger(json, "donuk", out string dn) && dn == "true";
+        tut = Deger(json, "tut", out string h) && h == "true";
         if (!Deger(json, "kalibre", out string k)) return false;
         kalibre = k == "true";
         if (Deger(json, "egim", out string e)) egim = Sayi(e);
