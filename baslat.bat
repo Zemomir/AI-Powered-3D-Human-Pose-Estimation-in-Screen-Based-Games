@@ -1,8 +1,5 @@
 @echo off
-rem Fizyo-Oyun: kamerayi (telefon) ve oyunu birlikte acar.
-rem Telefonun IP'si degisirse sadece asagidaki satiri duzelt (DroidCam ekraninda yazar).
-set KAMERA=http://192.168.1.144:4747/video
-
+rem Kamera secimi artik oyunun menusunde yapilir.
 cd /d "%~dp0"
 if not exist oyun_derleme\FizyoOyun.exe (
   echo Oyun derlenmemis: oyun_derleme\FizyoOyun.exe yok.
@@ -10,10 +7,8 @@ if not exist oyun_derleme\FizyoOyun.exe (
   exit /b 1
 )
 if not exist .venv\Scripts\python.exe (
-  echo Python ortami yok: .venv\Scripts\python.exe bulunamadi.
+  echo Python ortami yok. Once kurulum.bat dosyasini calistirin.
   pause
   exit /b 1
 )
-rem cmd /k: kamera betigi hata verip kapanirsa mesaj ekranda kalsin
-start "Fizyo-Oyun kamera" cmd /k .venv\Scripts\python.exe hareket_yayini.py %KAMERA%
 start "" oyun_derleme\FizyoOyun.exe
