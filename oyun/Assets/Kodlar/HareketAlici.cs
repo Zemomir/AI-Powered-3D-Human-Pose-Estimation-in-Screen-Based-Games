@@ -28,6 +28,8 @@ public class HareketAlici : MonoBehaviour
     public bool HizTutuluyor => !KlavyeModu && Bagli && kalibre && !donuk && egim.HasValue && one.HasValue && tut;
     public string PortHatasi { get; private set; }               // ekranda gerçek sebep görünsün
     public string Durum { get; private set; }
+    public string Kaynak { get; private set; }
+    public int? Aci { get; private set; }
     public float SonMesajYasi => sonMesajZamani < 0 ? float.PositiveInfinity : Time.realtimeSinceStartup - sonMesajZamani;
     public int SonMesajNo { get; private set; }
 
@@ -84,6 +86,9 @@ public class HareketAlici : MonoBehaviour
             solEl = sol; sagEl = sag;
             tut = h;
             Durum = Deger(mesaj, "durum", out string durum) && durum != "null" ? durum.Trim('"') : null;
+            Kaynak = Deger(mesaj, "kaynak", out string kaynak) && kaynak != "null" ? kaynak.Trim('"') : null;
+            Aci = Deger(mesaj, "aci", out string aci) && int.TryParse(aci, out int a) &&
+                (a == 0 || a == 90 || a == 180 || a == 270) ? a : (int?)null;
             SonMesajNo++;
             sonMesajZamani = Time.realtimeSinceStartup;
         }

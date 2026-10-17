@@ -15,8 +15,8 @@ public class AnaMenu : MonoBehaviour
 
     enum Ekran { Menu, Yerles, Kalibre, Ayar, Oyun, Duraklat, Bitis }
     Ekran ekran;
-    bool atlandi, telefon, onizleme, kalibrasyonGoruldu;
-    int kameraIndeksi, laptopAci, telefonAci, kalite;
+    bool atlandi, onizleme, kalibrasyonGoruldu;
+    int kalite;
     string adres;
     float yerlesme, yerlesSon, kalibreSon;
     int kalibreMesajNo;
@@ -24,9 +24,9 @@ public class AnaMenu : MonoBehaviour
     Sprite yuvarlak;
     Texture2D yuvarlakDoku;
     GameObject canvasGo, menu, hazirlik, duraklat, bitis;
-    Text durum, nokta, sayim, aciklama, hizEtiket, donusEtiket, sureEtiket, rekor, secimBilgisi;
-    Button basla, laptopDugme, telefonDugme;
-    Button[] indeksler, acilar, kaliteler;
+    Text durum, kameraDurumu, nokta, sayim, aciklama, hizEtiket, donusEtiket, sureEtiket, rekor, secimBilgisi;
+    Button basla;
+    Button[] kaliteler;
     Slider hiz, donus, sure;
     Toggle sesAnahtari;
     InputField ip;
@@ -46,10 +46,6 @@ public class AnaMenu : MonoBehaviour
     {
         if (atlandi) return;
         kayit = GetComponent<OyunKaydi>();
-        telefon = PlayerPrefs.GetInt("KameraTelefon", 0) != 0;
-        kameraIndeksi = Mathf.Clamp(PlayerPrefs.GetInt("KameraIndeksi", 0), 0, 2);
-        laptopAci = AciOku("LaptopAci", 0);
-        telefonAci = AciOku("TelefonAci", 90);
         adres = PlayerPrefs.GetString("TelefonAdresi", "192.168.1.144:4747");
         onizleme = PlayerPrefs.GetInt("KameraOnizleme", 0) != 0;
         yerlesme = PlayerPrefs.GetFloat("YerlesmeSuresi", 8f);
@@ -61,12 +57,6 @@ public class AnaMenu : MonoBehaviour
         Kur();
         Goster(Ekran.Menu);
         KameraUygula();
-    }
-
-    static int AciOku(string anahtar, int varsayilan)
-    {
-        int a = PlayerPrefs.GetInt(anahtar, varsayilan);
-        return a == 0 || a == 90 || a == 180 || a == 270 ? a : varsayilan;
     }
 
     void Kur()
@@ -89,35 +79,21 @@ public class AnaMenu : MonoBehaviour
         Yazi(alan, "Gövdenle yön ver, elini kaldır, birlikte yola çık.", 55, 108, 1600, 44, 28);
         var sol = Kutu(alan, "Kamera", 40, 180, 810, 550);
         var sag = Kutu(alan, "Ayarlar", 880, 180, 840, 550);
-        Yazi(sol, "01   KAMERANI SEÇ", 30, 18, 750, 45, 25, FontStyle.Bold);
-        laptopDugme = Dugme(sol, "Laptop kamerası", 30, 78, 360, 76, () => KameraSec(false));
-        telefonDugme = Dugme(sol, "Telefon (DroidCam)", 410, 78, 370, 76, () => KameraSec(true));
-        Yazi(sol, "Laptop kamera indeksi", 30, 175, 400, 38, 25);
-        indeksler = new Button[3];
-        for (int i = 0; i < 3; i++)
-        {
-            int n = i;
-            indeksler[i] = Dugme(sol, i.ToString(), 440 + i * 114, 170, 104, 54,
-                () => { kameraIndeksi = n; KameraUygula(); });
-        }
-        Yazi(sol, "Telefon IP:port", 30, 253, 300, 38, 25);
-        ip = Girdi(sol, adres, 320, 245, 460, 60);
-        ip.onEndEdit.AddListener(s => { adres = s.Trim(); KameraUygula(); });
-        Yazi(sol, "Görüntüyü döndür", 30, 335, 300, 38, 25);
-        acilar = new Button[4];
-        for (int i = 0; i < 4; i++)
-        {
-            int a = i * 90;
-            acilar[i] = Dugme(sol, a + "°", 320 + i * 117, 328, 108, 56, () =>
-            {
-                if (telefon) telefonAci = a; else laptopAci = a;
-                KameraUygula();
-            });
-        }
-        var onizlemeAnahtari = Anahtar(sol, "Kamera görüntüsünü göster", 30, 420, 745, onizleme);
+        Yazi(sol, "01 KAMERA", 30, 18, 750, 45, 25, FontStyle.Bold);
+        kameraDurumu = Yazi(sol, "Kamera aranıyor…", 30, 78, 750, 136, 34, FontStyle.Bold);
+        kameraDurumu.supportRichText = false;
+        kameraDurumu.resizeTextForBestFit = true;
+        kameraDurumu.resizeTextMinSize = 23;
+        kameraDurumu.resizeTextMaxSize = 34;
+        secimBilgisi = Yazi(sol, "", 30, 216, 750, 44, 23);
+        secimBilgisi.supportRichText = false;
+        Dugme(sol, "Yeniden ara", 30, 278, 300, 64, () => kopru.YenidenAra());
+        var onizlemeAnahtari = Anahtar(sol, "Kamera görüntüsünü göster", 30, 358, 745, onizleme);
         onizlemeAnahtari.onValueChanged.AddListener(v => { onizleme = v; KameraUygula(); });
-        secimBilgisi = Yazi(sol, "", 30, 482, 510, 56, 21);
-        Dugme(sol, "Yeniden dene", 556, 485, 224, 48, KameraYenidenDene);
+        Yazi(sol, "Telefon adresi (isteğe bağlı)", 30, 430, 750, 34, 22);
+        ip = Girdi(sol, adres, 30, 474, 420, 52);
+        ip.onEndEdit.AddListener(s => { adres = s.Trim(); KameraUygula(); });
+        Yazi(sol, "Laptop bulunamazsa kullanılır.", 470, 474, 310, 52, 20);
 
         hizEtiket = Yazi(sag, "", 30, 18, 780, 42, 26, FontStyle.Bold);
         hiz = Kaydirici(sag, 30, 75, 775, .3f, 2f, PlayerPrefs.GetFloat("HizHassasiyeti", Motor.VARSAYILAN_HIZ_HASSASIYETI));
@@ -171,14 +147,10 @@ public class AnaMenu : MonoBehaviour
         Dugme(bitisAlan, "Tekrar (Enter)", 900, 865, 460, 85, Baslat, true);
     }
 
-    void KameraSec(bool secim) { telefon = secim; KameraUygula(); }
-
-    void KameraYenidenDene() { KameraUygula(); if (KaynakOku(out _)) kopru.YenidenDene(); }
-
     bool KaynakOku(out string kaynak)
     {
-        kaynak = kameraIndeksi.ToString();
-        if (!telefon) return true;
+        kaynak = "";
+        if (string.IsNullOrWhiteSpace(adres)) return true;
         // Serbest URL yerine menüde gösterilen IP:port sözleşmesini uygula.
         if (!Uri.TryCreate("http://" + adres + "/video", UriKind.Absolute, out Uri uri) ||
             string.IsNullOrEmpty(uri.Host) || uri.AbsolutePath != "/video" ||
@@ -189,27 +161,17 @@ public class AnaMenu : MonoBehaviour
 
     void KameraUygula()
     {
-        PlayerPrefs.SetInt("KameraTelefon", telefon ? 1 : 0);
-        PlayerPrefs.SetInt("KameraIndeksi", kameraIndeksi);
-        PlayerPrefs.SetInt("LaptopAci", laptopAci);
-        PlayerPrefs.SetInt("TelefonAci", telefonAci);
         PlayerPrefs.SetString("TelefonAdresi", adres);
         PlayerPrefs.SetInt("KameraOnizleme", onizleme ? 1 : 0);
         PlayerPrefs.Save();
-        if (KaynakOku(out string kaynak)) kopru.KameraAyarla(kaynak, telefon ? telefonAci : laptopAci, onizleme);
+        if (KaynakOku(out string kaynak)) kopru.KameraAyarla(kaynak, onizleme);
         else kopru.Durdur();
         SecimleriGuncelle();
     }
 
     void SecimleriGuncelle()
     {
-        Renkle(laptopDugme, !telefon); Renkle(telefonDugme, telefon);
-        for (int i = 0; i < indeksler.Length; i++)
-        { indeksler[i].interactable = !telefon; Renkle(indeksler[i], kameraIndeksi == i); }
-        ip.interactable = telefon;
-        for (int i = 0; i < acilar.Length; i++) Renkle(acilar[i], i * 90 == (telefon ? telefonAci : laptopAci));
         for (int i = 0; i < kaliteler.Length; i++) Renkle(kaliteler[i], kalite == i);
-        secimBilgisi.text = telefon ? "DroidCam açık ve aynı Wi-Fi ağına bağlı olsun." : "Dahili kamera genellikle 0 numaralı kameradır.";
     }
 
     void Renkle(Button b, bool secili)
@@ -263,9 +225,12 @@ public class AnaMenu : MonoBehaviour
         sureEtiket.text = $"Yerine geçme süresi   {yerlesme:0} sn";
         rekor.text = ses.EnIyiSure > 0 ? "En iyi süre: " + SureYazi(ses.EnIyiSure) : "İlk yolculuğuna hazır mısın?";
         durum.text = DurumYazisi();
+        kameraDurumu.text = KameraDurumYazisi();
+        secimBilgisi.text = alici.Bagli && alici.Durum != "araniyor" && alici.Kaynak != null ?
+            alici.Kaynak + (alici.Aci.HasValue ? " · " + alici.Aci.Value + "°" : "") : "";
         bool hazir = alici.Bagli && alici.Durum == "hazir";
         nokta.color = kopru.Hata != null || !kopru.KurulumTamam ? new Color(1f, .35f, .3f) : hazir ? new Color(.35f, .9f, .6f) : vurgu;
-        basla.interactable = kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
+        basla.interactable = hazir && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
         if (ekran == Ekran.Yerles)
         {
             aciklama.text = "Yerine geç: kameradan 2-3 m uzakta,\nomuzların ve kalçaların görünsün";
@@ -289,8 +254,8 @@ public class AnaMenu : MonoBehaviour
     string DurumYazisi()
     {
         if (KopruYonetici.MenuTestModu) return "Test modu: köprü kapalı";
-        if (kopru.YenidenBaglaniyor) return "Kamera yeniden bağlanıyor…";
         if (kopru.Hata != null) return kopru.Hata;
+        if (kopru.YenidenBaglaniyor) return "Kamera aranıyor…";
         if (kopru.KopruKlasoru == null) return "Köprü klasörü bulunamadı. Oyunu köprüyle birlikte yerleştir veya -kopru <yol> kullan.";
         if (!kopru.KurulumTamam) return "Kurulum gerekli: " + System.IO.Path.Combine(kopru.KopruKlasoru, "kurulum.bat") + " dosyasını çalıştır";
         if (!KaynakOku(out _)) return "Telefon adresini IP:port olarak yaz (ör. 192.168.1.144:4747).";
@@ -299,6 +264,7 @@ public class AnaMenu : MonoBehaviour
         if (!alici.Bagli) return (kopru.Baslatiliyor ? "Köprü başlıyor…" : "Kameradan mesaj bekleniyor…") + ek;
         switch (alici.Durum)
         {
+            case "araniyor": return "Kamera aranıyor…" + ek;
             case "hazir": return "Hazır" + ek;
             case "kalibrasyon": return "Nötr duruş ayarlanıyor; kıpırdama…" + ek;
             case "kisi_yok": return "Kişi görünmüyor" + ek;
@@ -308,9 +274,19 @@ public class AnaMenu : MonoBehaviour
         }
     }
 
+    string KameraDurumYazisi()
+    {
+        if (kopru.Hata != null || !kopru.KurulumTamam || alici.PortHatasi != null ||
+            !KaynakOku(out _) || KopruYonetici.MenuTestModu) return DurumYazisi();
+        if (kopru.YenidenBaglaniyor || !alici.Bagli || alici.Durum == "araniyor") return "Kamera aranıyor…";
+        if (alici.Kaynak == "telefon") return "Telefon kamerası bulundu";
+        if (alici.Kaynak != null && alici.Kaynak.StartsWith("laptop:", StringComparison.Ordinal)) return "Laptop kamerası bulundu";
+        return DurumYazisi();
+    }
+
     void Baslat()
     {
-        if (!kopru.KurulumTamam || !kopru.Hazir || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
+        if (!kopru.KurulumTamam || !kopru.Hazir || !alici.Bagli || alici.Durum != "hazir" || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
         { AnaMenuyeDon(); return; }
         motor.BaslamaIzni = false;
         Goster(Ekran.Yerles);
