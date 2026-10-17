@@ -11,9 +11,9 @@ public class AnaMenu : MonoBehaviour
     public KopruYonetici kopru;
     public Arayuz arayuz;
     public Ses ses;
-    public bool HudGizli => !atlandi && (ekran == Ekran.Menu || ekran == Ekran.Yerles || ekran == Ekran.Kalibre || ekran == Ekran.Ayar || ekran == Ekran.Duraklat);
+    public bool HudGizli => !atlandi && (ekran == Ekran.Menu || ekran == Ekran.MenuAyarlar || ekran == Ekran.Yerles || ekran == Ekran.Kalibre || ekran == Ekran.Ayar || ekran == Ekran.Duraklat || ekran == Ekran.DuraklatAyarlar);
 
-    enum Ekran { Menu, Yerles, Kalibre, Ayar, Oyun, Duraklat, Bitis }
+    enum Ekran { Menu, MenuAyarlar, Yerles, Kalibre, Ayar, Oyun, Duraklat, DuraklatAyarlar, Bitis }
     Ekran ekran;
     bool atlandi, onizleme, kalibrasyonGoruldu;
     int kalite;
@@ -26,9 +26,10 @@ public class AnaMenu : MonoBehaviour
     Font font;
     Sprite yuvarlak;
     Texture2D yuvarlakDoku;
-    GameObject canvasGo, menu, hazirlik, duraklat, bitis;
+    GameObject canvasGo, menu, ayarlarEkrani, hazirlik, duraklat, bitis;
     Text durum, kameraDurumu, nokta, sayim, aciklama, hizEtiket, donusEtiket, sureEtiket, rekor, secimBilgisi;
     Button basla;
+    Button geriAyarlar;
     Button[] kaliteler;
     Slider hiz, donus, sure;
     Toggle sesAnahtari;
@@ -50,7 +51,7 @@ public class AnaMenu : MonoBehaviour
         if (atlandi) return;
         kayit = GetComponent<OyunKaydi>();
         adres = PlayerPrefs.GetString("TelefonAdresi", "192.168.1.144:4747");
-        onizleme = PlayerPrefs.GetInt("KameraOnizleme", 0) != 0;
+        onizleme = PlayerPrefs.GetInt("KameraOnizlemeAcik", 1) != 0;
         yerlesme = PlayerPrefs.GetFloat("YerlesmeSuresi", 8f);
         if (!float.IsFinite(yerlesme)) yerlesme = 8f;
         yerlesme = Mathf.Clamp(Mathf.Round(yerlesme), 3, 15);
@@ -76,80 +77,90 @@ public class AnaMenu : MonoBehaviour
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = .5f;
 
-        menu = Katman("Ana menü", true);
+        menu = Katman("Ana menu", true);
         var alan = Alan(menu.transform, 1760, 1000);
-        Yazi(alan, "Fizyo-Oyun", 50, 22, 1500, 80, 66, FontStyle.Bold);
-        Yazi(alan, "Gövdenle yön ver, elini kaldır, birlikte yola çık.", 55, 108, 1600, 44, 28);
-        var sol = Kutu(alan, "Kamera", 40, 180, 810, 550);
-        var sag = Kutu(alan, "Ayarlar", 880, 180, 840, 550);
-        Yazi(sol, "01 KAMERA", 30, 18, 750, 45, 25, FontStyle.Bold);
-        kameraDurumu = Yazi(sol, "Kamera aranıyor…", 30, 78, 750, 136, 34, FontStyle.Bold);
+        Yazi(alan, "Fizyo-Oyun", 110, 100, 1000, 100, 72, FontStyle.Bold);
+        Yazi(alan, "G\u00f6vdenle y\u00f6n ver, elini kald\u0131r, birlikte yola \u00e7\u0131k.", 114, 205, 1100, 52, 28);
+        basla = Dugme(alan, "Ba\u015fla", 120, 330, 540, 100, Baslat, true);
+        Dugme(alan, "Ayarlar", 120, 455, 540, 82, AyarlariMenuAc);
+        Dugme(alan, "\u00c7\u0131k\u0131\u015f", 120, 560, 540, 82, Cikis);
+        nokta = Yazi(alan, "\u25cf", 122, 710, 44, 50, 29, FontStyle.Bold);
+        durum = Yazi(alan, "K\u00f6pr\u00fc ba\u015fl\u0131yor\u2026", 172, 704, 800, 58, 25);
+        durum.supportRichText = false;
+        rekor = Yazi(alan, "", 122, 775, 800, 58, 26);
+
+        ayarlarEkrani = Katman("Ayarlar", true);
+        var ayarAlan = Alan(ayarlarEkrani.transform, 1760, 1000);
+        Yazi(ayarAlan, "Ayarlar", 50, 28, 1100, 76, 52, FontStyle.Bold);
+        geriAyarlar = Dugme(ayarAlan, "Geri", 1450, 28, 250, 70, AyarlardanDon);
+        var kamera = Kutu(ayarAlan, "Kamera", 40, 125, 800, 820);
+        var oyun = Kutu(ayarAlan, "Oyun", 880, 125, 840, 820);
+        Yazi(kamera, "KAMERA", 30, 18, 730, 46, 27, FontStyle.Bold);
+        kameraDurumu = Yazi(kamera, "Kamera aran\u0131yor\u2026", 30, 75, 735, 105, 31, FontStyle.Bold);
         kameraDurumu.supportRichText = false;
         kameraDurumu.resizeTextForBestFit = true;
-        kameraDurumu.resizeTextMinSize = 23;
-        kameraDurumu.resizeTextMaxSize = 34;
-        secimBilgisi = Yazi(sol, "", 30, 216, 750, 44, 23);
+        kameraDurumu.resizeTextMinSize = 22;
+        kameraDurumu.resizeTextMaxSize = 31;
+        secimBilgisi = Yazi(kamera, "", 30, 184, 735, 42, 21);
         secimBilgisi.supportRichText = false;
-        Dugme(sol, "Yeniden ara", 30, 278, 300, 64, YenidenAra);
-        var onizlemeAnahtari = Anahtar(sol, "Kamera görüntüsünü göster", 30, 358, 745, onizleme);
-        onizlemeAnahtari.onValueChanged.AddListener(v => { onizleme = v; KameraUygula(); });
-        Yazi(sol, "Telefon adresi (isteğe bağlı)", 30, 430, 750, 34, 22);
-        ip = Girdi(sol, adres, 30, 474, 420, 52);
+        Dugme(kamera, "Yeniden ara", 30, 246, 330, 68, YenidenAra);
+        var onizlemeAnahtari = Anahtar(kamera, "Kamera g\u00f6r\u00fcnt\u00fcs\u00fc (k\u00f6\u015fede)", 30, 345, 735, onizleme);
+        onizlemeAnahtari.onValueChanged.AddListener(v =>
+        {
+            onizleme = v;
+            PlayerPrefs.SetInt("KameraOnizlemeAcik", onizleme ? 1 : 0);
+            PlayerPrefs.Save();
+        });
+        Yazi(kamera, "Telefon adresi (iste\u011fe ba\u011fl\u0131)", 30, 445, 735, 42, 23);
+        ip = Girdi(kamera, adres, 30, 500, 430, 58);
         ip.onEndEdit.AddListener(s => { adres = s.Trim(); KameraUygula(); });
-        Yazi(sol, "Laptop bulunamazsa kullanılır.", 470, 474, 310, 52, 20);
+        Yazi(kamera, "Laptop bulunamazsa kullan\u0131l\u0131r.", 480, 500, 280, 58, 19);
 
-        hizEtiket = Yazi(sag, "", 30, 18, 780, 42, 26, FontStyle.Bold);
-        hiz = Kaydirici(sag, 30, 75, 775, .3f, 2f, PlayerPrefs.GetFloat("HizHassasiyeti", Motor.VARSAYILAN_HIZ_HASSASIYETI));
+        Yazi(oyun, "OYUN", 30, 18, 780, 42, 27, FontStyle.Bold);
+        hizEtiket = Yazi(oyun, "", 30, 75, 780, 42, 25, FontStyle.Bold);
+        hiz = Kaydirici(oyun, 30, 125, 775, .3f, 2f, PlayerPrefs.GetFloat("HizHassasiyeti", Motor.VARSAYILAN_HIZ_HASSASIYETI));
         hiz.onValueChanged.AddListener(v => motor.HizHassasiyetiAyarla(v));
-        donusEtiket = Yazi(sag, "", 30, 128, 780, 42, 26, FontStyle.Bold);
-        donus = Kaydirici(sag, 30, 185, 775, .3f, 2f, PlayerPrefs.GetFloat("DonusHassasiyeti", Motor.VARSAYILAN_DONUS_HASSASIYETI));
+        donusEtiket = Yazi(oyun, "", 30, 185, 780, 42, 25, FontStyle.Bold);
+        donus = Kaydirici(oyun, 30, 235, 775, .3f, 2f, PlayerPrefs.GetFloat("DonusHassasiyeti", Motor.VARSAYILAN_DONUS_HASSASIYETI));
         donus.onValueChanged.AddListener(v => motor.DonusHassasiyetiAyarla(v));
-        sureEtiket = Yazi(sag, "", 30, 238, 780, 42, 26, FontStyle.Bold);
-        sure = Kaydirici(sag, 30, 295, 775, 3, 15, yerlesme);
+        sureEtiket = Yazi(oyun, "", 30, 295, 780, 42, 25, FontStyle.Bold);
+        sure = Kaydirici(oyun, 30, 345, 775, 3, 15, yerlesme);
         sure.wholeNumbers = true;
         sure.onValueChanged.AddListener(v => { yerlesme = v; PlayerPrefs.SetFloat("YerlesmeSuresi", v); PlayerPrefs.Save(); });
-        sesAnahtari = Anahtar(sag, "Ses açık", 30, 360, 775, ses.SesAcik);
+        sesAnahtari = Anahtar(oyun, "Ses a\u00e7\u0131k", 30, 420, 775, ses.SesAcik);
         sesAnahtari.onValueChanged.AddListener(v => ses.SesAyarla(v));
-        Yazi(sag, "Grafik kalitesi", 30, 438, 270, 50, 25);
+        Yazi(oyun, "Grafik kalitesi", 30, 515, 270, 50, 25);
         kaliteler = new Button[3];
-        string[] adlar = { "Yüksek", "Orta", "Düşük" };
+        string[] adlar = { "Y\u00fcksek", "Orta", "D\u00fc\u015f\u00fck" };
         for (int i = 0; i < 3; i++)
         {
             int n = i;
-            kaliteler[i] = Dugme(sag, adlar[i], 310 + i * 164, 435, 154, 58,
+            kaliteler[i] = Dugme(oyun, adlar[i], 310 + i * 164, 510, 154, 58,
                 () => { kalite = n; Grafik.Ayarla(n); SecimleriGuncelle(); });
         }
 
-        var durumKutu = Kutu(alan, "Kamera durumu", 40, 752, 1680, 108);
-        nokta = Yazi(durumKutu, "●", 24, 24, 45, 50, 32);
-        durum = Yazi(durumKutu, "Köprü başlıyor…", 84, 12, 1570, 84, 25);
-        durum.supportRichText = false;
-        rekor = Yazi(alan, "", 50, 890, 650, 60, 27);
-        Dugme(alan, "Çıkış", 1010, 884, 250, 82, Cikis);
-        basla = Dugme(alan, "Başla", 1290, 878, 430, 94, Baslat, true);
-
-        hazirlik = Katman("Yerine geçme ve ayar", true);
+        hazirlik = Katman("Yerine ge\u00e7me ve ayar", true);
         var hazirAlan = Alan(hazirlik.transform, 1660, 940);
-        Yazi(hazirAlan, "Birazdan yola çıkıyoruz", 30, 100, 1600, 100, 55, FontStyle.Bold, TextAnchor.MiddleCenter);
+        Yazi(hazirAlan, "Birazdan yola \u00e7\u0131k\u0131yoruz", 30, 100, 1600, 100, 55, FontStyle.Bold, TextAnchor.MiddleCenter);
         aciklama = Yazi(hazirAlan, "", 60, 260, 1540, 190, 38, FontStyle.Normal, TextAnchor.MiddleCenter);
         sayim = Yazi(hazirAlan, "", 130, 480, 1400, 140, 70, FontStyle.Bold, TextAnchor.MiddleCenter);
-        Dugme(hazirAlan, "Ana menü", 580, 740, 500, 88, AnaMenuyeDon);
+        Dugme(hazirAlan, "Ana men\u00fc", 580, 740, 500, 88, AnaMenuyeDon);
 
         duraklat = Katman("Duraklatma", true);
-        var durakAlan = Alan(duraklat.transform, 800, 850);
-        var durakKutu = Kutu(durakAlan, "Duraklatıldı", 0, 0, 800, 850);
-        Yazi(durakKutu, "Kısa bir mola", 60, 60, 680, 100, 52, FontStyle.Bold, TextAnchor.MiddleCenter);
-        Dugme(durakKutu, "Devam", 100, 220, 600, 90, Devam, true);
-        Dugme(durakKutu, "Baştan", 100, 350, 600, 90, Baslat);
-        Dugme(durakKutu, "Ana menü", 100, 480, 600, 90, AnaMenuyeDon);
-        Dugme(durakKutu, "Çıkış", 100, 610, 600, 90, Cikis);
+        var durakAlan = Alan(duraklat.transform, 800, 900);
+        var durakKutu = Kutu(durakAlan, "Duraklat\u0131ld\u0131", 0, 0, 800, 900);
+        Yazi(durakKutu, "K\u0131sa bir mola", 60, 45, 680, 100, 52, FontStyle.Bold, TextAnchor.MiddleCenter);
+        Dugme(durakKutu, "Devam", 100, 190, 600, 82, Devam, true);
+        Dugme(durakKutu, "Ba\u015ftan", 100, 300, 600, 82, Baslat);
+        Dugme(durakKutu, "Ayarlar", 100, 410, 600, 82, AyarlariDuraklatmadanAc);
+        Dugme(durakKutu, "Ana men\u00fc", 100, 520, 600, 82, AnaMenuyeDon);
+        Dugme(durakKutu, "\u00c7\u0131k\u0131\u015f", 100, 630, 600, 82, Cikis);
 
-        bitis = Katman("Bitiş düğmeleri", false);
+        bitis = Katman("Bitis dugmeleri", false);
         var bitisAlan = Alan(bitis.transform, 1760, 1000);
-        Dugme(bitisAlan, "Ana menü", 400, 865, 420, 85, AnaMenuyeDon);
+        Dugme(bitisAlan, "Ana men\u00fc", 400, 865, 420, 85, AnaMenuyeDon);
         Dugme(bitisAlan, "Tekrar (Enter)", 900, 865, 460, 85, Baslat, true);
     }
-
     bool KaynakOku(out string kaynak)
     {
         kaynak = "";
@@ -165,9 +176,8 @@ public class AnaMenu : MonoBehaviour
     void KameraUygula()
     {
         PlayerPrefs.SetString("TelefonAdresi", adres);
-        PlayerPrefs.SetInt("KameraOnizleme", onizleme ? 1 : 0);
         PlayerPrefs.Save();
-        if (KaynakOku(out string kaynak)) kopru.KameraAyarla(kaynak, onizleme);
+        if (KaynakOku(out string kaynak)) kopru.KameraAyarla(kaynak, false);
         else kopru.Durdur();
         SecimleriGuncelle();
     }
@@ -189,6 +199,7 @@ public class AnaMenu : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape))
         {
             if (ekran == Ekran.Duraklat) Devam();
+            else if (ekran == Ekran.MenuAyarlar || ekran == Ekran.DuraklatAyarlar) AyarlardanDon();
             else if (ekran == Ekran.Oyun || ekran == Ekran.Ayar) Goster(Ekran.Duraklat);
             else if (ekran == Ekran.Yerles || ekran == Ekran.Kalibre) AnaMenuyeDon();
         }
@@ -226,8 +237,8 @@ public class AnaMenu : MonoBehaviour
         hizEtiket.text = $"Hız hassasiyeti   %{motor.HizHassasiyeti * 100:0}   (+ / −)";
         donusEtiket.text = $"Dönüş hassasiyeti   %{motor.DonusHassasiyeti * 100:0}   (1 / 2)";
         sureEtiket.text = $"Yerine geçme süresi   {yerlesme:0} sn";
-        rekor.text = ses.EnIyiSure > 0 ? "En iyi süre: " + SureYazi(ses.EnIyiSure) : "İlk yolculuğuna hazır mısın?";
-        durum.text = DurumYazisi();
+        rekor.text = ses.EnIyiSure > 0 ? "En iyi s\u00fcre: " + SureYazi(ses.EnIyiSure) : "En iyi s\u00fcre: \u2014";
+        durum.text = KameraDurumYazisi();
         kameraDurumu.text = KameraDurumYazisi();
         secimBilgisi.text = alici.Bagli && alici.Durum != "araniyor" && alici.Kaynak != null ?
             alici.Kaynak + (alici.Aci.HasValue ? " · " + alici.Aci.Value + "°" : "") : "";
@@ -326,11 +337,29 @@ public class AnaMenu : MonoBehaviour
     Ekran moladanOnce;
     void Devam() { Goster(moladanOnce); }
 
+    bool ayarlarMoladan;
+    void AyarlariMenuAc()
+    {
+        ayarlarMoladan = false;
+        Goster(Ekran.MenuAyarlar);
+    }
+
+    void AyarlariDuraklatmadanAc()
+    {
+        ayarlarMoladan = true;
+        Goster(Ekran.DuraklatAyarlar);
+    }
+
+    void AyarlardanDon()
+    {
+        Goster(ayarlarMoladan ? Ekran.Duraklat : Ekran.Menu);
+    }
+
     void Goster(Ekran yeni)
     {
-        if (yeni == Ekran.Duraklat) moladanOnce = ekran;
+        if (yeni == Ekran.Duraklat && ekran != Ekran.DuraklatAyarlar) moladanOnce = ekran;
         ekran = yeni;
-        bool mola = yeni == Ekran.Duraklat;
+        bool mola = yeni == Ekran.Duraklat || yeni == Ekran.DuraklatAyarlar;
         // Gerçek saatle ölçülen ayara mola süresi karışmasın.
         if (!mola && !motor.enabled && motor.Hal == Motor.Durum.Ayarlaniyor) motor.YerindeAyarla();
         Time.timeScale = mola ? 0f : 1f;
@@ -342,8 +371,9 @@ public class AnaMenu : MonoBehaviour
         if (kayit != null) kayit.enabled = !mola;
         ses.Kis(mola);
         menu.SetActive(yeni == Ekran.Menu);
+        ayarlarEkrani.SetActive(yeni == Ekran.MenuAyarlar || yeni == Ekran.DuraklatAyarlar);
         hazirlik.SetActive(yeni == Ekran.Yerles || yeni == Ekran.Kalibre || yeni == Ekran.Ayar);
-        duraklat.SetActive(mola);
+        duraklat.SetActive(yeni == Ekran.Duraklat);
         bitis.SetActive(yeni == Ekran.Bitis);
         Cursor.visible = yeni != Ekran.Oyun;
         Cursor.lockState = CursorLockMode.None;
