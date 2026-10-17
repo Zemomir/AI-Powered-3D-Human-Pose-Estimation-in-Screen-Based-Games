@@ -174,6 +174,9 @@ public class KameraOnizleme : MonoBehaviour
         Yazi(kok, "Kamera", 12, 6, 356, 26, 18).fontStyle = FontStyle.Bold;
         var alan = Rect(kok, "Görüntü alanı", 10, 36, 360, 198);
         var resim = Rect(alan, "Görüntü", 0, 0, 360, 198);
+        // FitInParent pivot etrafında küçülür: ortada dursun, sola yapışmasın.
+        resim.anchorMin = resim.anchorMax = resim.pivot = new Vector2(.5f, .5f);
+        resim.anchoredPosition = Vector2.zero;
         goruntu = resim.gameObject.AddComponent<RawImage>();
         goruntu.texture = doku;
         goruntu.raycastTarget = false;
