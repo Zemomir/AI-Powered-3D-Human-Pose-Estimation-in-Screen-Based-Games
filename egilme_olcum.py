@@ -17,9 +17,13 @@ Ekranda ilk "dik dur" evresine göre oranlar gösterilir.
 (oyundaki "öne" sinyali) ne kadar kaydığını ölçmek için. 2026-10-17 ilk oyun denemesinde
 Batın yana yatınca bazen hızlandığını / yavaşladığını gördü.
 
+--tam yaklaşık 2 dakikalık protokoldür; her kaydedilen karede MediaPipe'ın 33 noktasını
+ham olarak saklar. Amaç, yeni göstergeleri aynı kayıtlarda sonradan karşılaştırmaktır.
+
 Kullanım:
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --yan
+    .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --tam
 Kalçalar kadrajda görünmeli. Çıkış: q ya da Esc (o ana kadarki kayıt yine yazılır).
 """
 
@@ -52,6 +56,20 @@ YAN_EVRELER = [EVRELER[0]] + [
     ("SAGA EGIL (sadece yana)", 5, "sag"),
     ("DIK DUR", 4, "dik"),
     ("SOLA EGIL (sadece yana)", 5, "sol"),
+] * 2
+TAM_EVRELER = [EVRELER[0]] + [
+    ("DIK DUR", 4, "dik"),
+    ("ONE EGIL", 5, "one"),
+    ("DIK DUR", 4, "dik"),
+    ("GERIYE EGIL", 5, "geri"),
+    ("DIK DUR", 4, "dik"),
+    ("SAGA EGIL", 5, "sag"),
+    ("DIK DUR", 4, "dik"),
+    ("SOLA EGIL", 5, "sol"),
+    ("DIK DUR", 4, "dik"),
+    ("SAGA EGIL + ONE EGIL", 5, "sag_one"),
+    ("DIK DUR", 4, "dik"),
+    ("SOLA EGIL + ONE EGIL", 5, "sol_one"),
 ] * 2
 GECIS_SN = 1.0  # her evrenin ilk ve son bu kadar saniyesi nötre katılmaz (yerleşme / erken davranma)
 
@@ -94,7 +112,8 @@ def ortalama(satirlar, alan):
 
 def main():
     yan = "--yan" in sys.argv
-    argumanlar = [a for a in sys.argv[1:] if a != "--yan"]
+    tam = "--tam" in sys.argv
+    argumanlar = [a for a in sys.argv[1:] if a not in ("--yan", "--tam")]
     arg = argumanlar[0] if argumanlar else "0"
     kaynak = int(arg) if arg.isdigit() else arg
     aci = int(argumanlar[1]) if len(argumanlar) > 1 else (0 if isinstance(kaynak, int) else 90)
@@ -108,14 +127,15 @@ def main():
     kayit = []
     kamera = SonKare(kaynak)
     try:
-        olcum_dongusu(kamera, secenek, aci, kayit, YAN_EVRELER if yan else EVRELER)
+        evreler = TAM_EVRELER if tam else YAN_EVRELER if yan else EVRELER
+        olcum_dongusu(kamera, secenek, aci, kayit, evreler, tam=tam)
     finally:
-        yaz(kayit, "yan" if yan else "egilme")  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
+        yaz(kayit, "tam" if tam else "yan" if yan else "egilme")  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
         kamera.kapat()
         cv2.destroyAllWindows()
 
 
-def olcum_dongusu(kamera, secenek, aci, kayit, evreler):
+def olcum_dongusu(kamera, secenek, aci, kayit, evreler, tam=False):
     son_no, son_ts = 0, 0
     notr = None
     evre_no, evre_basi = 0, None  # ilk kare gelince saat başlar
@@ -152,8 +172,16 @@ def olcum_dongusu(kamera, secenek, aci, kayit, evreler):
                 ciz(kare, sonuc.pose_landmarks[0])
 
             if deger is not None:
-                kayit.append({"t": round(simdi, 3), "evre": evre_no, "etiket": etiket,
-                              "evrede_sn": round(gecen, 2), **deger})
+                satir = {"t": round(simdi, 3), "evre": evre_no, "etiket": etiket,
+                         "evrede_sn": round(gecen, 2), **deger}
+                if tam:
+                    satir.update({"gen": g, "yuk": y})
+                    for i, nokta in enumerate(sonuc.pose_landmarks[0]):
+                        satir.update({f"g{i}_x": nokta.x, f"g{i}_y": nokta.y, f"g{i}_z": nokta.z,
+                                      f"g{i}_v": nokta.visibility})
+                    for i, nokta in enumerate(sonuc.pose_world_landmarks[0]):
+                        satir.update({f"w{i}_x": nokta.x, f"w{i}_y": nokta.y, f"w{i}_z": nokta.z})
+                kayit.append(satir)
 
             if deger is None:
                 durum = "kalca/omuz gorunmuyor"
