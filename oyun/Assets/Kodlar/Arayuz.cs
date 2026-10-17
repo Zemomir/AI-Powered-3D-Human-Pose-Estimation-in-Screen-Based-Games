@@ -21,17 +21,19 @@ public class Arayuz : MonoBehaviour
 
         string kaynak = alici.KlavyeModu ? "Klavye modu (K: kapat)" : (alici.Bagli ? "Kamera bağlı" : "Kamera bağlı değil");
         string sol = $"{kaynak}\nHız: {motor.Hiz * 3.6f:0} km/sa\nSüre: {SureYazi(motor.Sure)}\nYol: %{motor.Ilerleme * 100:0}\nHız hassasiyeti: %{motor.HizHassasiyeti * 100:0}\nDönüş hassasiyeti: %{motor.DonusHassasiyeti * 100:0}\nYumuşatma: {(motor.YumusatmaAcik ? "açık" : "kapalı")}";
-        if (alici.Egim.HasValue)
-            sol += $"\nEğim: {alici.Egim.Value:+0;-0;0}°" + (alici.One.HasValue ? $"   Öne: {alici.One.Value * 100:+0.0;-0.0;0.0} cm" : "");
+        if (motor.DuzeltilmisEgim.HasValue)
+            sol += $"\nEğim: {motor.DuzeltilmisEgim.Value:+0;-0;0}°" + (motor.DuzeltilmisOne.HasValue ? $"   Öne: {motor.DuzeltilmisOne.Value * 100:+0.0;-0.0;0.0} cm" : "");
+        if (!alici.KlavyeModu)
+            sol += $"\nSıfır: öne {motor.OneSifir * 100:+0.0;-0.0;0.0} cm, eğim {motor.EgimSifir:+0;-0;0}°";
         Golgeli(new Rect(16, 12, h, h / 2f), sol, kucuk);
-        Golgeli(new Rect(16, h - kucuk.fontSize * 2.2f, Screen.width, kucuk.fontSize * 2f), "R: baştan   K: klavye   + / -: hız   1 / 2: dönüş   Y: yumuşatma", kucuk);
+        Golgeli(new Rect(16, h - kucuk.fontSize * 2.2f, Screen.width, kucuk.fontSize * 2f), "R: baştan   K: klavye   + / -: hız   1 / 2: dönüş   Y: yumuşatma   C: sıfırla", kucuk);
 
         string orta = null;
         if (motor.Hal == Motor.Durum.Bitti) orta = $"Bitti!  {SureYazi(motor.Sure)}\nR ile tekrar";
         else if (alici.PortHatasi != null && !alici.KlavyeModu) orta = alici.PortHatasi;
         else if (!alici.Bagli) orta = "Kamera bağlı değil\nhareket_yayini.py çalışıyor mu?";
         else if (alici.GoruntuDonuk) orta = "Telefondan görüntü gelmiyor\nDroidCam açık mı?";
-        else if (!alici.Kalibre) orta = "Dik otur\nayarlanıyor...";
+        else if (!alici.Kalibre) orta = "Oynayacağın gibi rahat otur\nayarlanıyor...";
         else if (!alici.Egim.HasValue) orta = "Kamera seni göremiyor\nomuzların görünsün";
         else if (motor.YolDisinda) orta = "Yola dön";
         if (orta != null) Golgeli(new Rect(0, h * 0.3f, Screen.width, h * 0.3f), orta, buyuk);

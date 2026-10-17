@@ -15,6 +15,10 @@ public class Motor : MonoBehaviour
     public float azamiGorselYatma = 35f;
 
     [Header("Hız")]
+    public float sifirTakipSn = 10f;          // rahat duruşa yavaş yaklaşma süresi, saniye
+    // Bu yana eğimin üstünde sıfır takibi durur, derece. Yan eğim "öne"yi ~0,1 cm/° kaydırıyor
+    // (yan ölçümü); 3°'de en fazla ~0,3 cm sıfıra karışabilir.
+    public float sifirTakipAzamiEgim = 3f;
     public float tabanHiz = 8f;          // m/sn, dik otururken
     public float oneOluBolge = 0.015f;   // metre; 2026-10-17 ölçümünde 20° eğilme ~4 cm verdi
     // Yana eğilirken "öne" sinyali kayıyor (2026-10-17 yan ölçümü: sağa ~11° → ~1 cm, sola ~0,4 cm,
@@ -46,7 +50,12 @@ public class Motor : MonoBehaviour
     public enum Durum { Bekliyor, Suruyor, SinyalYok, Bitti }
     public Durum Hal { get; private set; } = Durum.Bekliyor;
     public float Hiz { get; private set; }
+    public float HedefHiz { get; private set; }
     public float Sure { get; private set; }
+    public float OneSifir { get; private set; } = 0f;
+    public float EgimSifir { get; private set; } = 0f;
+    public float? DuzeltilmisEgim { get; private set; }
+    public float? DuzeltilmisOne { get; private set; }
     public float Ilerleme => Mathf.Clamp01((yolIndeksi - yol.BaslangicIndeksi) / (float)(yol.Noktalar.Count - 1 - yol.BaslangicIndeksi));
     public bool YolDisinda { get; private set; }
 
@@ -113,13 +122,27 @@ public class Motor : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.R)) Sifirla();
         if (Input.GetKeyDown(KeyCode.Y)) YumusatmaAcik = !YumusatmaAcik;
         HassasiyetTuslari();
-        if (Hal == Durum.Bitti) { Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
+        // Bağlıyken "kalibre değil" = Python yeniden kalibre ediyor, eski düzeltme kalmasın.
+        // Bağlantı kısa kopunca (Bagli false) ofset korunur: C ile ayarlanan sıfır kaybolmasın.
+        bool ofsetSil = alici.KlavyeModu || (alici.Bagli && !alici.Kalibre);
+        if (ofsetSil && (OneSifir != 0f || EgimSifir != 0f)) { OneSifir = 0f; EgimSifir = 0f; duzOne = null; }
+        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && alici.Kalibre)
+        {
+            // O anki duruş yeni sıfır olur; yumuşatma eski sıfıra göre kalmasın.
+            if (alici.Egim.HasValue) EgimSifir = alici.Egim.Value;
+            if (alici.One.HasValue) OneSifir = alici.One.Value;
+            duzOne = null;
+        }
+        DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - (alici.KlavyeModu ? 0f : EgimSifir) : (float?)null;
+        DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - (alici.KlavyeModu ? 0f : OneSifir) : (float?)null;
+        if (Hal == Durum.Bitti) { HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 
-        float? egim = alici.Egim, one = alici.One;
+        float? egim = DuzeltilmisEgim, one = DuzeltilmisOne;
         bool hazir = alici.Bagli && alici.Kalibre && egim.HasValue;
 
         if (!hazir)
         {
+            HedefHiz = 0;
             // Kamera kişiyi görmüyorsa motor durur: kimse sürmüyorken oyun ilerlemesin.
             if (Hal == Durum.Suruyor) Hal = Durum.SinyalYok;
             Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime);
@@ -130,6 +153,14 @@ public class Motor : MonoBehaviour
         }
         Hal = Durum.Suruyor;
         Sure += Time.deltaTime;
+
+        if (one.HasValue && !alici.KlavyeModu && Mathf.Abs(one.Value) < Mathf.Max(0f, oneOluBolge) && Mathf.Abs(egim.Value) < sifirTakipAzamiEgim)
+        {
+            // Yalnız ölü bölgedeki küçük duruş kaymasını düzelt; bilerek eğilmeyi emme.
+            float a = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(sifirTakipSn, 0.001f));
+            OneSifir += one.Value * a;
+            one = DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - OneSifir : (float?)null;
+        }
 
         float e = OluBolge(egim.Value, egimOluBolge);
         float donus = Mathf.Clamp(e * donusKatsayisi * DonusHassasiyeti, -azamiDonus, azamiDonus);
@@ -160,12 +191,13 @@ public class Motor : MonoBehaviour
         }
         hedef = Mathf.Clamp(hedef, enAzHiz, enCokHiz);
         if (YolDisinda) hedef = Mathf.Min(hedef, yolDisiHiz);
+        HedefHiz = hedef;
         Hiz = Mathf.MoveTowards(Hiz, hedef, ivme * Time.deltaTime);
 
         Ilerlet(donus);
         Yatir(e);
 
-        if (yolIndeksi >= yol.Noktalar.Count - 2) Hal = Durum.Bitti;
+        if (yolIndeksi >= yol.Noktalar.Count - 2) { Hal = Durum.Bitti; HedefHiz = 0; }
     }
 
     void Yatir(float egim)

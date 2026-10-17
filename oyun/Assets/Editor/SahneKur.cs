@@ -69,6 +69,10 @@ public static class SahneKur
         arayuz.alici = alici;
         arayuz.motor = motor;
 
+        var kayit = oyun.AddComponent<OyunKaydi>();
+        kayit.alici = alici;
+        kayit.motor = motor;
+
         var kamera = new GameObject("Kamera", typeof(Camera), typeof(AudioListener));
         kamera.tag = "MainCamera";
         var cam = kamera.GetComponent<Camera>();

@@ -1,7 +1,7 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
 Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
-Her karede 127.0.0.1:5065'e tek satırlık JSON gider:
+Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz sütunlarını içerir:
     {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031}
   egim : yan eğim, derece; + = kişi sağına eğik (nötr duruşa göre)
   one  : öne/geriye eğilme, metre; + = öne (omuz ortası kalçaya göre kameraya yaklaştı), nötre göre.
@@ -116,7 +116,7 @@ def main():
     try:
         os.makedirs(olcum_dizini, exist_ok=True)
         kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
-        csv_yazici = csv.DictWriter(kayit, fieldnames=("t", "kalibre", "egim", "one", "donuk"))
+        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz"), restval="")
         csv_yazici.writeheader()
         print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
     except OSError as e:
@@ -128,7 +128,7 @@ def main():
     try:
         dongu(kamera, secenek, aci, soket, kayit_durumu)
     finally:
-        gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu)  # oyun son eğimde takılı kalmasın
+        gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu, {"saat": round(time.time(), 3)})  # oyun son eğimde takılı kalmasın
         if kayit_durumu["kayit"] is not None:
             try:
                 kayit_durumu["kayit"].close()
@@ -139,14 +139,14 @@ def main():
         cv2.destroyAllWindows()
 
 
-def gonder(soket, mesaj, kayit_durumu=None):
+def gonder(soket, mesaj, kayit_durumu=None, ek=None):
     try:
         soket.sendto(json.dumps(mesaj).encode(), HEDEF)
     except OSError:
         pass  # oyun kapalıyken Windows ICMP "port unreachable" hatası verebilir; kamera tarafı durmasın
     if kayit_durumu is not None and kayit_durumu["yazici"] is not None:
         try:
-            kayit_durumu["yazici"].writerow(mesaj)
+            kayit_durumu["yazici"].writerow({**mesaj, **(ek or {})})
             if time.monotonic() - kayit_durumu["son_flush"] >= 1.0:
                 kayit_durumu["kayit"].flush()
                 kayit_durumu["son_flush"] = time.monotonic()
@@ -179,7 +179,7 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 simdi = time.monotonic()
                 if simdi - kare_zamani > DONUK_ESIK_SN and simdi - son_sessiz >= SESSIZ_ARALIK_SN:
                     # Akış dondu: susmak oyunu son değerde bırakır, açıkça "sinyal yok" de.
-                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu)
+                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu, {"saat": round(time.time(), 3)})
                     son_sessiz = simdi
                     duz_egim = duz_one = None
                 if simdi - kare_zamani > DONMA_SANIYE:
@@ -228,10 +228,17 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             else:
                 # Sinyal kopunca eski değer yumuşatmada sürüklenmesin.
                 duz_egim = duz_one = None
-            gonder(soket, mesaj, kayit_durumu)
+            ek = {
+                "saat": round(time.time(), 3),
+                "ham_egim": round(egim, 2) if egim is not None else None,
+                "ham_dz": round(dz, 4) if dz is not None else None,
+                "notr_egim": round(kal.notr_egim, 2) if kal.notr_egim is not None else None,
+                "notr_dz": round(kal.notr_dz, 4) if kal.notr_dz is not None else None,
+            }
+            gonder(soket, mesaj, kayit_durumu, ek)
 
             if not kal.tamam:
-                durum = f"KALIBRASYON: dik otur  {kal.kalan(simdi):.0f}" if egim is not None else "KALIBRASYON: omuzlar gorunsun"
+                durum = f"KALIBRASYON: oynayacagin gibi rahat otur  {kal.kalan(simdi):.0f}" if egim is not None else "KALIBRASYON: omuzlar gorunsun"
             elif mesaj["egim"] is None:
                 durum = "kisi / omuz gorunmuyor"
             else:
