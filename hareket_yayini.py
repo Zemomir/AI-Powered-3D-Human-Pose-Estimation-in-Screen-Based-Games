@@ -71,7 +71,7 @@ def ham_olcum(sonuc, g, y):
 
 def el_olcum(sonuc, g, y, egim, omuz_orani):
     """(sol_el, sag_el, sol_bilek_gor, sag_bilek_gor); omuz_orani ham_olcum ile aynıdır."""
-    if egim is None or omuz_orani is None or omuz_orani <= 0:
+    if egim is None or omuz_orani is None or omuz_orani < 0.01:
         return None, None, None, None
     n = sonuc.pose_landmarks[0]
     # omuz_egimi gibi ekran x sırası: x'i büyük omuz SAĞ; MediaPipe taraf etiketi kullanılmaz.

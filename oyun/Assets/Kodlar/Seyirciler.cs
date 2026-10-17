@@ -37,6 +37,7 @@ public class Seyirciler : MonoBehaviour
     readonly List<Seyirci> kisiler = new List<Seyirci>();
     readonly List<Vector3> direkler = new List<Vector3>();
     bool solHazir = true, sagHazir = true;
+    float solNullBasla = -1f, sagNullBasla = -1f;
     int ipucu;
     float solPoz, sagPoz;
 
@@ -121,14 +122,17 @@ public class Seyirciler : MonoBehaviour
     void Update()
     {
         KareOlayi = "";
-        SolKalkik = ElKalkik(alici != null ? alici.SolEl : null, SolKalkik);
-        SagKalkik = ElKalkik(alici != null ? alici.SagEl : null, SagKalkik);
-        if (!SolKalkik) solHazir = true;
-        if (!SagKalkik) sagHazir = true;
+        float? solEl = alici != null ? alici.SolEl : null;
+        float? sagEl = alici != null ? alici.SagEl : null;
+        SolKalkik = ElKalkik(solEl, SolKalkik);
+        SagKalkik = ElKalkik(sagEl, SagKalkik);
+        HazirligiGuncelle(solEl, ref solHazir, ref solNullBasla);
+        HazirligiGuncelle(sagEl, ref sagHazir, ref sagNullBasla);
         if (motor == null || yol == null || yol.Noktalar == null || yol.Noktalar.Count < 2) return;
         if (motor.Hal == Motor.Durum.Bekliyor || motor.Hal == Motor.Durum.Bitti)
             ipucu = yol.BaslangicIndeksi;
         else ipucu = yol.EnYakin(motor.transform.position, ipucu, out _);
+        // Ayarlaniyor ya da sinyal kopmasinda geçilen seyircinin kacti olayi Suruyor'a dönüste yazilir; sayim dogru kalir.
         if (motor.Hal != Motor.Durum.Suruyor) return;
 
         foreach (var kisi in kisiler)
@@ -155,6 +159,18 @@ public class Seyirciler : MonoBehaviour
     {
         if (!el.HasValue || !float.IsFinite(el.Value)) return false;
         return onceki ? el.Value >= elEsik - .3f : el.Value > elEsik;
+    }
+
+    void HazirligiGuncelle(float? el, ref bool hazir, ref float nullBasla)
+    {
+        if (!el.HasValue || !float.IsFinite(el.Value))
+        {
+            if (nullBasla < 0f) nullBasla = Time.time;
+            else if (Time.time - nullBasla >= .3f) hazir = true;
+            return;
+        }
+        nullBasla = -1f;
+        if (el.Value < elEsik - .3f) hazir = true;
     }
 
     void Olay(string ad)
@@ -208,6 +224,7 @@ public class Seyirciler : MonoBehaviour
         SolCak = SagCak = 0;
         SolKalkik = SagKalkik = false;
         solHazir = sagHazir = true;
+        solNullBasla = sagNullBasla = -1f;
         solPoz = sagPoz = 0;
         KareOlayi = "";
         ipucu = yol != null ? yol.BaslangicIndeksi : 0;

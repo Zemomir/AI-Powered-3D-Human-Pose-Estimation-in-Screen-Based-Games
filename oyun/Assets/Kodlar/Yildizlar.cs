@@ -113,6 +113,7 @@ public class Yildizlar : MonoBehaviour
         {
             var y = yildizlar[i];
             if (y.gorsel == null) continue;
+            if (!y.gorsel.gameObject.activeSelf) continue;
             if (y.toplandi)
             {
                 float t = Time.time - y.toplamaZamani;
