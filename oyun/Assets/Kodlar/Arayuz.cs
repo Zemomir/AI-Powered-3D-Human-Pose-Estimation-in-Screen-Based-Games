@@ -123,8 +123,8 @@ public class Arayuz : MonoBehaviour
         yildizMetni = Yazi(root, "", 42, 18, 315, 76, 36, FontStyle.Bold, TextAnchor.MiddleLeft);
         Kutu(root, "Çak hapı", 400, 18, 370, 76, panelRengi);
         cakMetni = Yazi(root, "", 420, 18, 330, 76, 36, FontStyle.Bold, TextAnchor.MiddleCenter);
-        Kutu(root, "Süre hapı", -374, 18, 350, 76, panelRengi, true);
-        sureMetni = Yazi(root, "", -352, 18, 306, 76, 36, FontStyle.Bold, TextAnchor.MiddleRight, true);
+        Kutu(root, "Süre hapı", 24, 18, 350, 76, panelRengi, true);
+        sureMetni = Yazi(root, "", 46, 18, 306, 76, 36, FontStyle.Bold, TextAnchor.MiddleRight, true);
 
         durumMetni = Yazi(root, "", 0, 5, 1180, 300, 58, FontStyle.Bold, TextAnchor.MiddleCenter, false, true);
         detayPanel = Kutu(root, "Ayrıntı paneli", 24, 112, 590, 520, panelSoluk).gameObject;
