@@ -15,15 +15,16 @@ public class Motor : MonoBehaviour
     public float azamiGorselYatma = 35f;
 
     [Header("Hız")]
+    public float ayarBekleSn = 3f; // Rahat oturması için bekleme süresi
+    public float ayarOlcSn = 2f;   // Sıfır için ölçüm süresi
     public float sifirTakipSn = 10f;          // rahat duruşa yavaş yaklaşma süresi, saniye
     // Bu yana eğimin üstünde sıfır takibi durur, derece. Yan eğim "öne"yi ~0,1 cm/° kaydırıyor
     // (yan ölçümü); 3°'de en fazla ~0,3 cm sıfıra karışabilir.
     public float sifirTakipAzamiEgim = 3f;
     public float tabanHiz = 8f;          // m/sn, dik otururken
     public float oneOluBolge = 0.015f;   // metre; 2026-10-17 ölçümünde 20° eğilme ~4 cm verdi
-    // Yana eğilirken "öne" sinyali kayıyor (2026-10-17 yan ölçümü: sağa ~11° → ~1 cm, sola ~0,4 cm,
-    // titreşim de artıyor). Kayma hep öne doğru olduğu için yalnız ÖNE tarafın ölü bölgesi yan eğimle
-    // genişler (10° yana → 1,5 + 1 = 2,5 cm); geriye eğilip yavaşlamak dönerken de aynı kalır.
+    // Yan ölçümünde öne kayma görüldü (yan_20261017_161252); oyun kaydında virajda geriye de kaydı
+    // (motor_20261017_165341), bu yüzden iki tarafın ölü bölgesi yan eğimle genişler.
     // Üst sınır: keskin virajda da öne eğilmek hız verebilsin (tam öne eğilme ~4 cm).
     public float yanEgimOluBolgeEki = 0.001f;  // metre / derece
     public float azamiOneOluBolge = 0.03f;     // metre
@@ -47,10 +48,12 @@ public class Motor : MonoBehaviour
     public float yolDisiHiz = 4f;        // yoldan çıkınca (çim) üst sınır
     public float ivme = 6f;              // m/sn²
 
-    public enum Durum { Bekliyor, Suruyor, SinyalYok, Bitti }
+    public enum Durum { Bekliyor, Suruyor, SinyalYok, Ayarlaniyor, Bitti }
     public Durum Hal { get; private set; } = Durum.Bekliyor;
     public float Hiz { get; private set; }
     public float HedefHiz { get; private set; }
+    public float AyarKalanSn { get; private set; }
+    public bool AyarOlcuyor { get; private set; }
     public float Sure { get; private set; }
     public float OneSifir { get; private set; } = 0f;
     public float EgimSifir { get; private set; } = 0f;
@@ -63,6 +66,9 @@ public class Motor : MonoBehaviour
     float gorselYatma;
     float? duzOne;  // yumuşatılmış öne sinyali; sinyal kopunca sıfırlanır, eski değer geri gelmesin
     float oneYokSure;  // kalça bir an görünmeyince yumuşatma baştan başlamasın, ancak uzun kesintide
+    bool ayarIstendi;
+    float ayarGecenSn, egimToplam, oneToplam;
+    int egimSayisi, oneSayisi;
 
     void Start()
     {
@@ -115,6 +121,7 @@ public class Motor : MonoBehaviour
         Hiz = 0; Sure = 0; gorselYatma = 0; duzOne = null; oneYokSure = 0;
         if (govde != null) govde.localRotation = Quaternion.identity;
         Hal = Durum.Bekliyor;
+        ayarIstendi = true;
     }
 
     void Update()
@@ -124,21 +131,18 @@ public class Motor : MonoBehaviour
         HassasiyetTuslari();
         // Bağlıyken "kalibre değil" = Python yeniden kalibre ediyor, eski düzeltme kalmasın.
         // Bağlantı kısa kopunca (Bagli false) ofset korunur: C ile ayarlanan sıfır kaybolmasın.
-        bool ofsetSil = alici.KlavyeModu || (alici.Bagli && !alici.Kalibre);
+        bool yenidenKalibre = alici.Bagli && !alici.Kalibre;
+        bool ofsetSil = alici.KlavyeModu || yenidenKalibre;
         if (ofsetSil && (OneSifir != 0f || EgimSifir != 0f)) { OneSifir = 0f; EgimSifir = 0f; duzOne = null; }
-        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && alici.Kalibre)
-        {
-            // O anki duruş yeni sıfır olur; yumuşatma eski sıfıra göre kalmasın.
-            if (alici.Egim.HasValue) EgimSifir = alici.Egim.Value;
-            if (alici.One.HasValue) OneSifir = alici.One.Value;
-            duzOne = null;
-        }
+        if (yenidenKalibre && ofsetSil) ayarIstendi = true;
+        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti) ayarIstendi = true;
         DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - (alici.KlavyeModu ? 0f : EgimSifir) : (float?)null;
         DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - (alici.KlavyeModu ? 0f : OneSifir) : (float?)null;
-        if (Hal == Durum.Bitti) { HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
-
         float? egim = DuzeltilmisEgim, one = DuzeltilmisOne;
         bool hazir = alici.Bagli && alici.Kalibre && egim.HasValue;
+        if (alici.KlavyeModu) { ayarIstendi = false; OneSifir = 0f; EgimSifir = 0f; }
+        if (Hal == Durum.Ayarlaniyor && !hazir) { ayarIstendi = true; Hal = Durum.SinyalYok; AyarOlcuyor = false; }
+        if (Hal == Durum.Bitti) { HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 
         if (!hazir)
         {
@@ -149,6 +153,33 @@ public class Motor : MonoBehaviour
             Ilerlet(0);
             Yatir(0);
             duzOne = null; oneYokSure = 0;
+            return;
+        }
+        if (ayarIstendi)
+        {
+            Hal = Durum.Ayarlaniyor; ayarGecenSn = 0f; egimToplam = oneToplam = 0f;
+            egimSayisi = oneSayisi = 0; ayarIstendi = false;
+        }
+        if (Hal == Durum.Ayarlaniyor)
+        {
+            HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime);
+            Ilerlet(0); Yatir(0); duzOne = null; oneYokSure = 0;
+            ayarGecenSn += Time.unscaledDeltaTime;
+            AyarOlcuyor = ayarGecenSn >= Mathf.Max(0f, ayarBekleSn);
+            AyarKalanSn = Mathf.Max(0f, ayarBekleSn + ayarOlcSn - ayarGecenSn);
+            if (AyarOlcuyor)
+            {
+                if (alici.Egim.HasValue) { egimToplam += alici.Egim.Value; egimSayisi++; }
+                if (alici.One.HasValue) { oneToplam += alici.One.Value; oneSayisi++; }
+            }
+            if (ayarGecenSn >= Mathf.Max(0f, ayarBekleSn) + Mathf.Max(0f, ayarOlcSn))
+            {
+                if (egimSayisi > 0) EgimSifir = egimToplam / egimSayisi;
+                if (oneSayisi > 0) OneSifir = oneToplam / oneSayisi;
+                DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - EgimSifir : (float?)null;
+                DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - OneSifir : (float?)null;
+                Hal = Durum.Suruyor; AyarOlcuyor = false;
+            }
             return;
         }
         Hal = Durum.Suruyor;
@@ -186,7 +217,8 @@ public class Motor : MonoBehaviour
             float oneEsik = alici.KlavyeModu ? temelOneEsik :
                 Mathf.Min(temelOneEsik + Mathf.Max(0f, yanEgimOluBolgeEki) * Mathf.Abs(egim.Value), Mathf.Max(azamiOneOluBolge, temelOneEsik));
             float x = duzOne.Value;
-            float katki = x > oneEsik ? x - oneEsik : (x < -temelOneEsik ? x + temelOneEsik : 0f);
+            float geriEsik = alici.KlavyeModu ? temelOneEsik : oneEsik;
+            float katki = x > oneEsik ? x - oneEsik : (x < -geriEsik ? x + geriEsik : 0f);
             hedef += katki * hizKatsayisi * HizHassasiyeti;
         }
         hedef = Mathf.Clamp(hedef, enAzHiz, enCokHiz);
