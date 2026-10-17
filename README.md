@@ -18,7 +18,9 @@ Kamera kontrollü fizyoterapi oyunu, hemipleji tanılı çocuklar için gelişti
 
 ## Kamera ve konumlanma
 
-Menüden **Laptop kamerası** veya **Telefon (DroidCam)** seç. Telefon seçeneğinde `IP:port` adresini gir. Kameradan 2-3 metre uzakta, ayakta dur; omuzların ve kalçaların görüntüde olsun. Masaya oturunca kalçalar görünmez ve direksiyon kontrolü çalışmaz.
+Kamera otomatik bulunur: oyun laptop kameralarını sırayla dener ve seni gören kamerayı (ve görüntünün doğru dönüşünü) seçer. Laptop kamerası yoksa menüdeki **Telefon adresi** (DroidCam `IP:port`) kullanılır. Yanlış kamera seçildiyse ya da sonradan kamera taktıysan **Yeniden ara**'ya bas. Kameradan 2-3 metre uzakta, ayakta dur; omuzların ve kalçaların görüntüde olsun. Masaya oturunca kalçalar görünmez ve direksiyon kontrolü çalışmaz; menüdeki durum satırı bunu "Kalçaların görünmüyor" diye söyler.
+
+Oyun ekranın kendi çözünürlüğünde tam ekran açılır; **F11** pencere ile tam ekran arasında geçer.
 
 ## Tuşlar
 
