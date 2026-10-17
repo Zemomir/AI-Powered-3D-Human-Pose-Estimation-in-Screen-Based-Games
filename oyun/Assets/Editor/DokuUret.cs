@@ -35,9 +35,9 @@ public static class DokuUret
         doku.SetPixels(renkler);
         doku.Apply();
         string yol = "Assets/Dokular/" + ad + ".png";
-        File.WriteAllBytes(yol, doku.EncodeToPNG());
+        byte[] bayt = doku.EncodeToPNG();
         Object.DestroyImmediate(doku);
-        AssetDatabase.ImportAsset(yol, ImportAssetOptions.ForceSynchronousImport);
+        if (!File.Exists(yol) || !System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(yol), bayt)) File.WriteAllBytes(yol, bayt);
         var aktarici = (TextureImporter)AssetImporter.GetAtPath(yol);
         aktarici.wrapMode = TextureWrapMode.Repeat;
         aktarici.mipmapEnabled = true;

@@ -49,7 +49,10 @@ public class Cevre : MonoBehaviour
                 float boy = Aralik(r, 4.5f, 7.5f);
                 var ton = yaprak;
                 if (yaprakTonlari != null && yaprakTonlari.Length > 0)
-                    ton = yaprakTonlari[r.Next(yaprakTonlari.Length)] ?? yaprak;
+                {
+                    var secilenTon = yaprakTonlari[r.Next(yaprakTonlari.Length)];
+                    ton = secilenTon != null ? secilenTon : yaprak;
+                }
                 bool cam = r.Next(2) == 0;
                 float govdeBoy = cam ? boy * .72f : boy * .65f;
                 Ekle(silindir, agacGovde, p + Vector3.up * (govdeBoy / 2 - .2f), new Vector3(.38f, govdeBoy / 2 + .2f, .38f));
@@ -84,7 +87,7 @@ public class Cevre : MonoBehaviour
     static Mesh Koni()
     {
         const int dilim = 12;
-        var v = new Vector3[(dilim + 1) * 2 + 1];
+        var v = new Vector3[(dilim + 1) * 2 + dilim + 2];
         var uv = new Vector2[v.Length];
         var t = new int[dilim * 6];
         for (int i = 0; i <= dilim; i++)
@@ -94,11 +97,14 @@ public class Cevre : MonoBehaviour
             v[i * 2 + 1] = Vector3.up;
             uv[i * 2] = new Vector2(i / (float)dilim, 0);
             uv[i * 2 + 1] = new Vector2(i / (float)dilim, 1);
+            int kapak = (dilim + 1) * 2;
+            v[kapak + i] = v[i * 2];
             if (i == dilim) continue;
             int k = i * 6;
             t[k] = i * 2; t[k + 1] = i * 2 + 1; t[k + 2] = i * 2 + 2;
-            t[k + 3] = v.Length - 1; t[k + 4] = i * 2; t[k + 5] = i * 2 + 2;
+            t[k + 3] = kapak + dilim + 1; t[k + 4] = kapak + i; t[k + 5] = kapak + i + 1;
         }
+        v[(dilim + 1) * 2 + dilim + 1] = Vector3.zero;
         var mesh = new Mesh { name = "CamKoni", vertices = v, uv = uv, triangles = t };
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();

@@ -10,8 +10,11 @@ public static class AraziUret
         Directory.CreateDirectory("Assets/Arazi");
         AssetDatabase.Refresh();
         const int coz = 513;
-        var noktalar = Ornekle(yol.kontrol, yol.adim);
-        var bas = new Vector3(30 - 350, -.05f, 170 - 350);
+        var noktalar = Yol.Ornekle(yol.kontrol, yol.adim);
+        float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+        foreach (var nokta in noktalar) { minX = Mathf.Min(minX, nokta.x); maxX = Mathf.Max(maxX, nokta.x); minZ = Mathf.Min(minZ, nokta.z); maxZ = Mathf.Max(maxZ, nokta.z); }
+        float kenar = Mathf.Max(maxX - minX, maxZ - minZ) + 440f;
+        var bas = new Vector3((minX + maxX - kenar) / 2, -.15f, (minZ + maxZ - kenar) / 2);
         var veri = AssetDatabase.LoadAssetAtPath<TerrainData>("Assets/Arazi/Vadi.asset");
         if (veri == null)
         {
@@ -19,14 +22,14 @@ public static class AraziUret
             AssetDatabase.CreateAsset(veri, "Assets/Arazi/Vadi.asset");
         }
         veri.heightmapResolution = coz;
-        veri.size = new Vector3(700, 100, 700);
+        veri.size = new Vector3(kenar, 100, kenar);
         veri.alphamapResolution = 512;
         veri.terrainLayers = new[] { Katman("Cim", cim, 12), Katman("Toprak", toprak, 8) };
         var yukseklik = new float[coz, coz];
         for (int z = 0; z < coz; z++)
         for (int x = 0; x < coz; x++)
         {
-            Vector3 p = bas + new Vector3(x * 700f / (coz - 1), 0, z * 700f / (coz - 1));
+            Vector3 p = bas + new Vector3(x * kenar / (coz - 1), 0, z * kenar / (coz - 1));
             float kenardan = Uzaklik(p, noktalar) - yol.genislik / 2;
             float gecis = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(17, 45, kenardan));
             float dag = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(45, 230, kenardan));
@@ -38,12 +41,19 @@ public static class AraziUret
         veri.SetHeights(0, 0, yukseklik);
         int a = veri.alphamapResolution;
         var boya = new float[a, a, 2];
+        var boyaMesafesi = new float[a, a];
         for (int z = 0; z < a; z++)
         for (int x = 0; x < a; x++)
         {
             float u = x / (float)(a - 1), v = z / (float)(a - 1);
-            float kenar = Uzaklik(bas + new Vector3(u * 700, 0, v * 700), noktalar) - yol.genislik / 2;
-            float omuz = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(1, 3, kenar));
+            boyaMesafesi[z, x] = Uzaklik(bas + new Vector3(u * kenar, 0, v * kenar), noktalar) - yol.genislik / 2;
+        }
+        for (int z = 0; z < a; z++)
+        for (int x = 0; x < a; x++)
+        {
+            float u = x / (float)(a - 1), v = z / (float)(a - 1);
+            float mesafe = boyaMesafesi[z, x];
+            float omuz = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(1, 3, mesafe));
             float egim = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(22, 40, veri.GetSteepness(u, v)));
             float oran = Mathf.Max(omuz, egim);
             boya[z, x, 0] = 1 - oran;
@@ -91,21 +101,4 @@ public static class AraziUret
         return Mathf.Sqrt(en);
     }
 
-    // Yol.Ornekle ile aynı hesap; çalışma zamanı yoluna müdahale etmez.
-    static List<Vector3> Ornekle(Vector3[] kontrol, float adim)
-    {
-        var sonuc = new List<Vector3>();
-        for (int i = 1; i < kontrol.Length - 2; i++)
-        {
-            Vector3 p0 = kontrol[i - 1], p1 = kontrol[i], p2 = kontrol[i + 1], p3 = kontrol[i + 2];
-            int parca = Mathf.Max(2, Mathf.CeilToInt(Vector3.Distance(p1, p2) / adim));
-            for (int j = 0; j < parca; j++)
-            {
-                float t = j / (float)parca, t2 = t * t, t3 = t2 * t;
-                sonuc.Add(.5f * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3));
-            }
-        }
-        sonuc.Add(kontrol[kontrol.Length - 2]);
-        return sonuc;
-    }
 }

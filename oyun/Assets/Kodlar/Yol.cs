@@ -27,7 +27,9 @@ public class Yol : MonoBehaviour
 
     void Awake()
     {
-        Noktalar = Ornekle();
+        Noktalar = Ornekle(kontrol, adim);
+        ToplamUzunluk = 0;
+        for (int i = 1; i < Noktalar.Count; i++) ToplamUzunluk += Vector3.Distance(Noktalar[i - 1], Noktalar[i]);
         BaslangicIndeksi = Mathf.Clamp(Mathf.RoundToInt(baslangicMesafesi / adim), 0, Noktalar.Count - 2);
         GetComponent<MeshFilter>().mesh = SeritMesh(Noktalar, -genislik / 2, genislik / 2, 0.01f);
         if (kenarMalzemesi != null)
@@ -38,7 +40,7 @@ public class Yol : MonoBehaviour
         if (bitisMalzemesi != null) BitisCizgisi();
     }
 
-    List<Vector3> Ornekle()
+    public static List<Vector3> Ornekle(Vector3[] kontrol, float adim)
     {
         // Uç noktalar eğrinin yönünü belirler, yolun kendisi 1. ile sondan 2. nokta arasıdır.
         var sonuc = new List<Vector3>();
@@ -49,8 +51,6 @@ public class Yol : MonoBehaviour
             for (int j = 0; j < parca; j++) sonuc.Add(CatmullRom(p0, p1, p2, p3, j / (float)parca));
         }
         sonuc.Add(kontrol[kontrol.Length - 2]);
-        ToplamUzunluk = 0;
-        for (int i = 1; i < sonuc.Count; i++) ToplamUzunluk += Vector3.Distance(sonuc[i - 1], sonuc[i]);
         return sonuc;
     }
 

@@ -6,7 +6,7 @@ public class KameraTakip : MonoBehaviour
     public Transform hedef;
     public Motor motor;
     Camera kamera;
-    public float geri = 9f, yukari = 4f, bakisYuksekligi = 1.2f, yumusaklik = 4f;
+    public float geri = 6.5f, yukari = 2.8f, bakisYuksekligi = 1.1f, yumusaklik = 4f;
 
     void Start()
     {

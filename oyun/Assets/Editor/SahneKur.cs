@@ -24,10 +24,6 @@ public static class SahneKur
         var toprakDoku = DokuUret.Uret("Toprak", 512, 2);
         var asfaltDoku = DokuUret.Uret("Asfalt", 512, 0);
         var kabukDoku = DokuUret.Uret("Kabuk", 256, 3);
-        var cim = Malzeme("Cim", Color.white);
-        Dokula(cim, cimDoku, new Vector2(1, 1));
-        var toprak = Malzeme("Toprak", Color.white);
-        Dokula(toprak, toprakDoku, Vector2.one);
         var asfalt = Malzeme("Asfalt", Color.white);
         Dokula(asfalt, asfaltDoku, new Vector2(2, 1));
         var beyaz = Malzeme("Beyaz", new Color(0.95f, 0.95f, 0.92f));
@@ -126,7 +122,8 @@ public static class SahneKur
         RenderSettings.fogEndDistance = 520f;
         RenderSettings.fogColor = ufuk;
         cam.farClipPlane = 600;
-        kamera.transform.position = new Vector3(0, 4, -9);
+        cam.nearClipPlane = 0.5f;
+        kamera.transform.position = new Vector3(0, 2.8f, -6.5f);
         var takip = kamera.AddComponent<KameraTakip>();
         takip.hedef = motorGo.transform;
         takip.motor = motor;
