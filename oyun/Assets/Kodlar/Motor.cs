@@ -116,13 +116,16 @@ public class Motor : MonoBehaviour
             duzOne = duzOne.HasValue ? Mathf.Lerp(duzOne.Value, one.Value, a) : one.Value;
             oneYokSure = 0;
         }
-        else if ((oneYokSure += Time.deltaTime) > HareketAlici.ZAMAN_ASIMI_SN) duzOne = null;
+        else if ((oneYokSure += Time.unscaledDeltaTime) > HareketAlici.ZAMAN_ASIMI_SN) duzOne = null;
 
         if (duzOne.HasValue)  // kısa kesintide son yumuşatılmış değer kullanılır, uzunda katkı yok
         {
-            float oneEsik = Mathf.Min(oneOluBolge + yanEgimOluBolgeEki * Mathf.Abs(egim.Value), azamiOneOluBolge);
+            float temelOneEsik = Mathf.Max(0f, oneOluBolge);
+            // Klavye modunda yana eğimden kaynaklanan kamera kayması olmadığı için eşik genişlemez.
+            float oneEsik = alici.KlavyeModu ? temelOneEsik :
+                Mathf.Min(temelOneEsik + Mathf.Max(0f, yanEgimOluBolgeEki) * Mathf.Abs(egim.Value), Mathf.Max(azamiOneOluBolge, temelOneEsik));
             float x = duzOne.Value;
-            float katki = x > oneEsik ? x - oneEsik : (x < -oneOluBolge ? x + oneOluBolge : 0f);
+            float katki = x > oneEsik ? x - oneEsik : (x < -temelOneEsik ? x + temelOneEsik : 0f);
             hedef += katki * hizKatsayisi * HizHassasiyeti;
         }
         hedef = Mathf.Clamp(hedef, enAzHiz, enCokHiz);
