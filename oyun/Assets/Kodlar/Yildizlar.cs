@@ -35,7 +35,11 @@ public class Yildizlar : MonoBehaviour
     {
         if (yol == null || yol.Noktalar == null || yol.Noktalar.Count < 2 || malzeme == null) return;
         int sira = 0;
-        for (int i = yol.BaslangicIndeksi + 30; i < yol.Noktalar.Count - 15; i += 12)
+        int ilk = yol.BaslangicIndeksi + 30, son = yol.Noktalar.Count - 15;
+        // Desen 9 yıldızda bir tamamlanır (3 sol, 3 orta, 3 sağ); yalnız tam desenler konur ki
+        // sol ve sağ yıldız sayısı eşit olsun: taraf karşılaştırması fizyoterapist için veri.
+        int adet = Mathf.Max(0, (son - ilk + 11) / 12) / 9 * 9;
+        for (int i = ilk; i < son && sira < adet; i += 12)
         {
             int taraf = (sira / 3) % 3;
             // Cross(up, ileri) sağdır; negatif değer sürücünün soludur.

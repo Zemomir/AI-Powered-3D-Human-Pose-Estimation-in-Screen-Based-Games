@@ -16,6 +16,7 @@ public class OtoPilot : MonoBehaviour
     IPEndPoint hedef;
     float sonrakiGonderim;
     float ofset;
+    int ipucu = -1;  // EnYakin dar pencerede arar; ipucu motorla birlikte ilerlemeli
 
     void Awake()
     {
@@ -47,7 +48,9 @@ public class OtoPilot : MonoBehaviour
             Yol yol = motor.yol;
             if (yol != null && yol.Noktalar != null && yol.Noktalar.Count > 1)
             {
-                int indeks = yol.EnYakin(motor.transform.position, 0, out _);
+                if (ipucu < 0 || motor.Hal != Motor.Durum.Suruyor) ipucu = yol.BaslangicIndeksi;
+                int indeks = yol.EnYakin(motor.transform.position, ipucu, out _);
+                ipucu = indeks;
                 int hedefIndeks = Mathf.Clamp(indeks + 8, 0, yol.Noktalar.Count - 1);
                 Vector3 yon = yol.Yon(hedefIndeks);
                 Vector3 sag = Vector3.Cross(Vector3.up, yon).normalized;
