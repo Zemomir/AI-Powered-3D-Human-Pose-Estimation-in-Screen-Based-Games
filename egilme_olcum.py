@@ -31,12 +31,14 @@ from kamera_test import DONDURME, DONMA_SANIYE, MIN_GORUNURLUK, MODEL, SonKare, 
 KULAKLAR, OMUZLAR, KALCALAR = (7, 8), (11, 12), (23, 24)
 PENCERE = "Fizyo-Oyun egilme olcumu"
 # (ekran yazısı, süre sn, CSV etiketi). İlk "dik" evresi nötr duruş (kalibrasyon) olur.
-EVRELER = [("HAZIRLAN", 4, "hazir")] + [
-    ("DIK DUR", 3, "dik"),
-    ("ONE EGIL", 4, "one"),
-    ("DIK DUR", 3, "dik"),
-    ("GERIYE EGIL", 4, "geri"),
+# 2026-10-17 deneme 1: 3 sn'lik dik evrenin sonunda kişi erkenden eğildi, kalibrasyon kirlendi.
+EVRELER = [("HAZIRLAN - yerlesip kipirdama", 6, "hazir")] + [
+    ("DIK DUR", 4, "dik"),
+    ("ONE EGIL", 5, "one"),
+    ("DIK DUR", 4, "dik"),
+    ("GERIYE EGIL", 5, "geri"),
 ] * 2
+GECIS_SN = 1.0  # her evrenin ilk ve son bu kadar saniyesi nötre katılmaz (yerleşme / erken davranma)
 
 
 def uzaklik(noktalar, i, j, g, y):
@@ -154,7 +156,7 @@ def olcum_dongusu(kamera, secenek, aci, kayit):
             if gecen >= sure:
                 if etiket == "dik" and notr is None:
                     # Evrenin ilk saniyesi geçiş (kişi henüz yerleşmemiş), nötre katılmaz.
-                    satirlar = [s for s in kayit if s["evre"] == evre_no and s["evrede_sn"] >= 1.0]
+                    satirlar = [s for s in kayit if s["evre"] == evre_no and GECIS_SN <= s["evrede_sn"] <= sure - GECIS_SN]
                     if satirlar:
                         notr = {a: ortalama(satirlar, a) for a in ("govde", "omuz", "kulak", "dz")}
                 evre_no, evre_basi = evre_no + 1, evre_basi + sure  # aşan süre sonraki evreden düşülür
