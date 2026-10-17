@@ -20,11 +20,11 @@ public class Arayuz : MonoBehaviour
         buyuk.fontSize = Mathf.Max(24, h / 14);
 
         string kaynak = alici.KlavyeModu ? "Klavye modu (K: kapat)" : (alici.Bagli ? "Kamera bağlı" : "Kamera bağlı değil");
-        string sol = $"{kaynak}\nHız: {motor.Hiz * 3.6f:0} km/sa\nSüre: {SureYazi(motor.Sure)}\nYol: %{motor.Ilerleme * 100:0}";
+        string sol = $"{kaynak}\nHız: {motor.Hiz * 3.6f:0} km/sa\nSüre: {SureYazi(motor.Sure)}\nYol: %{motor.Ilerleme * 100:0}\nHız hassasiyeti: %{motor.HizHassasiyeti * 100:0}";
         if (alici.Egim.HasValue)
             sol += $"\nEğim: {alici.Egim.Value:+0;-0;0}°" + (alici.One.HasValue ? $"   Öne: {alici.One.Value * 100:+0.0;-0.0;0.0} cm" : "");
         Golgeli(new Rect(16, 12, h, h / 2f), sol, kucuk);
-        Golgeli(new Rect(16, h - kucuk.fontSize * 2.2f, Screen.width, kucuk.fontSize * 2f), "R: baştan   K: klavye modu", kucuk);
+        Golgeli(new Rect(16, h - kucuk.fontSize * 2.2f, Screen.width, kucuk.fontSize * 2f), "R: baştan   K: klavye modu   + / -: hız hassasiyeti", kucuk);
 
         string orta = null;
         if (motor.Hal == Motor.Durum.Bitti) orta = $"Bitti!  {SureYazi(motor.Sure)}\nR ile tekrar";

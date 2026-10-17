@@ -17,7 +17,13 @@ public class Motor : MonoBehaviour
     [Header("Hız")]
     public float tabanHiz = 8f;          // m/sn, dik otururken
     public float oneOluBolge = 0.015f;   // metre; 2026-10-17 ölçümünde 20° eğilme ~4 cm verdi
-    public float hizKatsayisi = 150f;    // (m/sn) / metre: +4 cm → yaklaşık +4 m/sn
+    public float hizKatsayisi = 150f;    // (m/sn) / metre: +4 cm → yaklaşık +4 m/sn (%100 hassasiyette)
+    // Hassasiyet öne/geri ekseninin tamamına uygulanır (geriye eğilip yavaşlamaya da), tek eksen tek ayar.
+    // Oyun içinden +/- ile %10 adımla değişir, kapatınca hatırlanır (fizyoterapist çocuğa göre ayarlasın).
+    // Varsayılan %90: 2026-10-17 ilk denemede Batın öne eğilmeyi biraz fazla hassas buldu.
+    public const float VARSAYILAN_HIZ_HASSASIYETI = 0.9f;
+    const string HASSASIYET_ANAHTARI = "HizHassasiyeti";
+    public float HizHassasiyeti { get; private set; }
     public float enAzHiz = 3f, enCokHiz = 15f;
     public float yolDisiHiz = 4f;        // yoldan çıkınca (çim) üst sınır
     public float ivme = 6f;              // m/sn²
@@ -32,7 +38,29 @@ public class Motor : MonoBehaviour
     int yolIndeksi;
     float gorselYatma;
 
-    void Start() => Sifirla();
+    void Start()
+    {
+        float kayitli = PlayerPrefs.GetFloat(HASSASIYET_ANAHTARI, VARSAYILAN_HIZ_HASSASIYETI);
+        if (!float.IsFinite(kayitli)) kayitli = VARSAYILAN_HIZ_HASSASIYETI;  // Clamp NaN'ı süzmez
+        HizHassasiyeti = Mathf.Clamp(kayitli, 0.3f, 2f);
+        Sifirla();
+    }
+
+    // inputString yazılan karakteri verir: Türkçe klavyede de, sayısal tuş takımında da + ve - çalışır.
+    void HassasiyetTuslari()
+    {
+        float yeni = HizHassasiyeti;
+        foreach (char c in Input.inputString)
+        {
+            if (c == '+') yeni += 0.1f;
+            else if (c == '-') yeni -= 0.1f;
+        }
+        yeni = Mathf.Clamp(Mathf.Round(yeni * 10f) / 10f, 0.3f, 2f);
+        if (yeni == HizHassasiyeti) return;
+        HizHassasiyeti = yeni;
+        PlayerPrefs.SetFloat(HASSASIYET_ANAHTARI, yeni);
+        PlayerPrefs.Save();
+    }
 
     public void Sifirla()
     {
@@ -47,6 +75,7 @@ public class Motor : MonoBehaviour
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.R)) Sifirla();
+        HassasiyetTuslari();
         if (Hal == Durum.Bitti) { Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 
         float? egim = alici.Egim, one = alici.One;
@@ -68,7 +97,7 @@ public class Motor : MonoBehaviour
         float donus = Mathf.Clamp(e * donusKatsayisi, -azamiDonus, azamiDonus);
 
         float hedef = tabanHiz;
-        if (one.HasValue) hedef += OluBolge(one.Value, oneOluBolge) * hizKatsayisi;
+        if (one.HasValue) hedef += OluBolge(one.Value, oneOluBolge) * hizKatsayisi * HizHassasiyeti;
         hedef = Mathf.Clamp(hedef, enAzHiz, enCokHiz);
         if (YolDisinda) hedef = Mathf.Min(hedef, yolDisiHiz);
         Hiz = Mathf.MoveTowards(Hiz, hedef, ivme * Time.deltaTime);

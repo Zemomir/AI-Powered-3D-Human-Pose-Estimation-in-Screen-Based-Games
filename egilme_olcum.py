@@ -7,10 +7,19 @@ Ekrandaki yönergeyi izle (dik dur → öne eğil → dik dur → geriye eğil, 
   kulak  : iki kulak arası piksel uzunluğu (aynı mantık, baş için)
   dz     : MediaPipe'ın metre cinsinden derinlik tahmininde omuz ortası - kalça ortası
            (negatif = omuzlar kalçadan kameraya daha yakın; 2026-10-17 verisinde öne eğilince azaldı)
+  egim   : omuz çizgisinin yataydan sapması, derece (oyundaki yan eğim)
+  donme  : MediaPipe'ın 11 - 12 numaralı omuz z farkı, metre (gövde kameraya göre dönerse değişir).
+           Görüntü aynalandığı için etiketler kişinin bedenine göre ters olabilir: işaretine değil,
+           sağa ve sola eğilmede değişip değişmediğine bak.
 Ekranda ilk "dik dur" evresine göre oranlar gösterilir.
+
+--yan ile protokol yana eğilmeye döner (dik → sağa → dik → sola): yana yatınca dz'nin
+(oyundaki "öne" sinyali) ne kadar kaydığını ölçmek için. 2026-10-17 ilk oyun denemesinde
+Batın yana yatınca bazen hızlandığını / yavaşladığını gördü.
 
 Kullanım:
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video
+    .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --yan
 Kalçalar kadrajda görünmeli. Çıkış: q ya da Esc (o ana kadarki kayıt yine yazılır).
 """
 
@@ -26,7 +35,7 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 
-from kamera_test import DONDURME, DONMA_SANIYE, MIN_GORUNURLUK, MODEL, SonKare, ciz
+from kamera_test import DONDURME, DONMA_SANIYE, MIN_GORUNURLUK, MODEL, SonKare, ciz, omuz_egimi
 
 KULAKLAR, OMUZLAR, KALCALAR = (7, 8), (11, 12), (23, 24)
 PENCERE = "Fizyo-Oyun egilme olcumu"
@@ -37,6 +46,12 @@ EVRELER = [("HAZIRLAN - yerlesip kipirdama", 6, "hazir")] + [
     ("ONE EGIL", 5, "one"),
     ("DIK DUR", 4, "dik"),
     ("GERIYE EGIL", 5, "geri"),
+] * 2
+YAN_EVRELER = [EVRELER[0]] + [
+    ("DIK DUR", 4, "dik"),
+    ("SAGA EGIL (sadece yana)", 5, "sag"),
+    ("DIK DUR", 4, "dik"),
+    ("SOLA EGIL (sadece yana)", 5, "sol"),
 ] * 2
 GECIS_SN = 1.0  # her evrenin ilk ve son bu kadar saniyesi nötre katılmaz (yerleşme / erken davranma)
 
@@ -67,6 +82,8 @@ def olc(sonuc, g, y):
         "omuz": uzaklik(n, *OMUZLAR, g, y),
         "kulak": uzaklik(n, *KULAKLAR, g, y) if kulak_gorunur else None,
         "dz": dz,
+        "egim": omuz_egimi(n, g, y),
+        "donme": w[11].z - w[12].z,
     }
 
 
@@ -76,9 +93,11 @@ def ortalama(satirlar, alan):
 
 
 def main():
-    arg = sys.argv[1] if len(sys.argv) > 1 else "0"
+    yan = "--yan" in sys.argv
+    argumanlar = [a for a in sys.argv[1:] if a != "--yan"]
+    arg = argumanlar[0] if argumanlar else "0"
     kaynak = int(arg) if arg.isdigit() else arg
-    aci = int(sys.argv[2]) if len(sys.argv) > 2 else (0 if isinstance(kaynak, int) else 90)
+    aci = int(argumanlar[1]) if len(argumanlar) > 1 else (0 if isinstance(kaynak, int) else 90)
     if aci not in DONDURME:
         raise SystemExit(f"Döndürme 0, 90, 180 ya da 270 olmalı, gelen: {aci}")
 
@@ -89,20 +108,20 @@ def main():
     kayit = []
     kamera = SonKare(kaynak)
     try:
-        olcum_dongusu(kamera, secenek, aci, kayit)
+        olcum_dongusu(kamera, secenek, aci, kayit, YAN_EVRELER if yan else EVRELER)
     finally:
-        yaz(kayit)  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
+        yaz(kayit, "yan" if yan else "egilme")  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
         kamera.kapat()
         cv2.destroyAllWindows()
 
 
-def olcum_dongusu(kamera, secenek, aci, kayit):
+def olcum_dongusu(kamera, secenek, aci, kayit, evreler):
     son_no, son_ts = 0, 0
     notr = None
     evre_no, evre_basi = 0, None  # ilk kare gelince saat başlar
 
     with vision.PoseLandmarker.create_from_options(secenek) as model:
-        while kamera.calisiyor and evre_no < len(EVRELER):
+        while kamera.calisiyor and evre_no < len(evreler):
             no, kare, kare_zamani = kamera.al()
             if kare is None or no == son_no:
                 if son_no == 0 and time.monotonic() - kare_zamani > DONMA_SANIYE:
@@ -117,7 +136,7 @@ def olcum_dongusu(kamera, secenek, aci, kayit):
             simdi = time.monotonic()
             if evre_basi is None:
                 evre_basi = simdi
-            yazi, sure, etiket = EVRELER[evre_no]
+            yazi, sure, etiket = evreler[evre_no]
             gecen = simdi - evre_basi
 
             if DONDURME[aci] is not None:
@@ -144,7 +163,8 @@ def olcum_dongusu(kamera, secenek, aci, kayit):
                 parcalar = [f"govde {deger['govde'] / notr['govde']:.2f}", f"omuz {deger['omuz'] / notr['omuz']:.2f}"]
                 if deger["kulak"] is not None and notr["kulak"]:
                     parcalar.append(f"kulak {deger['kulak'] / notr['kulak']:.2f}")
-                parcalar.append(f"dz {deger['dz'] - notr['dz']:+.2f}")
+                parcalar.append(f"dz {deger['dz'] - notr['dz']:+.3f}")
+                parcalar.append(f"egim {deger['egim'] - notr['egim']:+.0f}")
                 durum = "  ".join(parcalar)
 
             cv2.putText(kare, f"{yazi}  {max(sure - gecen, 0):.0f}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (0, 255, 255), 3)
@@ -158,17 +178,17 @@ def olcum_dongusu(kamera, secenek, aci, kayit):
                     # Evrenin ilk saniyesi geçiş (kişi henüz yerleşmemiş), nötre katılmaz.
                     satirlar = [s for s in kayit if s["evre"] == evre_no and GECIS_SN <= s["evrede_sn"] <= sure - GECIS_SN]
                     if satirlar:
-                        notr = {a: ortalama(satirlar, a) for a in ("govde", "omuz", "kulak", "dz")}
+                        notr = {a: ortalama(satirlar, a) for a in ("govde", "omuz", "kulak", "dz", "egim", "donme")}
                 evre_no, evre_basi = evre_no + 1, evre_basi + sure  # aşan süre sonraki evreden düşülür
 
 
-def yaz(kayit):
+def yaz(kayit, onek):
     if not kayit:
         print("Kayıt yok, dosya yazılmadı.", file=sys.stderr)
         return
     klasor = Path(__file__).parent / "olcumler"
     klasor.mkdir(exist_ok=True)
-    yol = klasor / f"egilme_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    yol = klasor / f"{onek}_{datetime.now():%Y%m%d_%H%M%S}.csv"
     with open(yol, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(kayit[0]))
         w.writeheader()
