@@ -15,11 +15,11 @@ public class AnaMenu : MonoBehaviour
 
     enum Ekran { Menu, MenuAyarlar, Kalibre, Oyun, Duraklat, DuraklatAyarlar, Bitis }
     Ekran ekran;
-    bool atlandi, onizleme, kalibrasyonGoruldu;
+    bool atlandi, onizleme;
     int kalite;
     string adres;
     float kalibreSon;
-    int kalibreMesajNo;
+    int kalibreBaslangicNo;
     bool yenidenAraBekleniyor;
     float yenidenAraSon;
     int yenidenAraMesajNo;
@@ -44,6 +44,7 @@ public class AnaMenu : MonoBehaviour
         atlandi = KopruYonetici.MenuAtlanir;
         if (atlandi) { motor.BaslamaIzni = true; enabled = false; return; }
         motor.BaslamaIzni = false;
+        motor.PythonKalibrasyonuGerekli += HazirligaGec;
     }
 
     void Start()
@@ -206,12 +207,10 @@ public class AnaMenu : MonoBehaviour
             HazirligaGec();
         if (ekran == Ekran.Kalibre)
         {
-            if (alici.SonMesajNo > kalibreMesajNo && alici.Bagli &&
-                (alici.Durum == "kalibrasyon" || !alici.Kalibre)) kalibrasyonGoruldu = true;
-            if (kalibrasyonGoruldu && alici.Bagli && alici.Durum == "hazir")
+            if (alici.KalibrasyonNo > kalibreBaslangicNo && alici.Bagli && alici.Durum == "hazir")
             { motor.PythonKalibrasyonuylaBaslat(); Goster(Ekran.Oyun); }
             // UDP komutu kaybolmuşsa hazır durumdaki köprüye yeniden gönder.
-            else if (!kalibrasyonGoruldu && Time.realtimeSinceStartup - kalibreSon > 2f)
+            else if (alici.KalibrasyonNo <= kalibreBaslangicNo && Time.realtimeSinceStartup - kalibreSon >= 2f)
             { kopru.KalibreEt(); kalibreSon = Time.realtimeSinceStartup; }
         }
         if (ekran == Ekran.Oyun && motor.Hal == Motor.Durum.Bitti) Goster(Ekran.Bitis);
@@ -235,7 +234,7 @@ public class AnaMenu : MonoBehaviour
         basla.interactable = !AramaOnayiBekleniyor() && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
         if (ekran == Ekran.Kalibre)
         {
-            bool olcuyor = kalibrasyonGoruldu && alici.Bagli && alici.Durum == "kalibrasyon";
+            bool olcuyor = alici.KalibrasyonNo > kalibreBaslangicNo && alici.Bagli && alici.Durum == "kalibrasyon";
             aciklama.text = olcuyor ? "Kıpırdama" : "Kameranın önüne geç — omuzların ve kalçaların görünsün";
             sayim.text = olcuyor && alici.KalibrasyonKalan.HasValue ?
                 Mathf.CeilToInt(Mathf.Max(0f, alici.KalibrasyonKalan.Value)).ToString() :
@@ -306,8 +305,7 @@ public class AnaMenu : MonoBehaviour
     void HazirligaGec()
     {
         motor.PythonKalibrasyonunuBekle();
-        kalibrasyonGoruldu = false;
-        kalibreMesajNo = alici.SonMesajNo;
+        kalibreBaslangicNo = alici.KalibrasyonNo;
         kalibreSon = Time.realtimeSinceStartup;
         kopru.KalibreEt();
         Goster(Ekran.Kalibre);

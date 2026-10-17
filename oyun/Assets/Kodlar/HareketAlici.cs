@@ -30,6 +30,7 @@ public class HareketAlici : MonoBehaviour
     public string Durum { get; private set; }
     public float? KalibrasyonKalan { get; private set; }
     public int KalibrasyonDeneme { get; private set; }
+    public int KalibrasyonNo { get; private set; }
     public string Kaynak { get; private set; }
     public int? Aci { get; private set; }
     public float SonMesajYasi => sonMesajZamani < 0 ? float.PositiveInfinity : Time.realtimeSinceStartup - sonMesajZamani;
@@ -91,6 +92,8 @@ public class HareketAlici : MonoBehaviour
             KalibrasyonKalan = Deger(mesaj, "kalibrasyon_kalan", out string kalan) ? Sayi(kalan) : null;
             KalibrasyonDeneme = Deger(mesaj, "kalibrasyon_deneme", out string deneme) &&
                 int.TryParse(deneme, out int n) && n > 0 ? n : 1;
+            KalibrasyonNo = Deger(mesaj, "kalibrasyon_no", out string numara) &&
+                int.TryParse(numara, out int kn) && kn >= 0 ? kn : 0;
             Kaynak = Deger(mesaj, "kaynak", out string kaynak) && kaynak != "null" ? kaynak.Trim('"') : null;
             Aci = Deger(mesaj, "aci", out string aci) && int.TryParse(aci, out int a) &&
                 (a == 0 || a == 90 || a == 180 || a == 270) ? a : (int?)null;

@@ -73,6 +73,8 @@ EL_GECMIS_SN = 1.5
 GERI_BAK_SN = 0.3
 BIRAK_GECIKME_SN = 0.0
 PENCERE = "Fizyo-Oyun hareket yayini"
+kalibrasyon_no = 0
+CSV_BASLIK = ("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum", "aci", "kaynak", "kalibrasyon_kalan", "kalibrasyon_no")
 
 
 def govde_egimi(n, g, y):
@@ -129,6 +131,9 @@ class Kalibrasyon:
         self.sifirla()
 
     def sifirla(self):
+        global kalibrasyon_no
+        kalibrasyon_no += 1
+        self.kalibrasyon_no = kalibrasyon_no
         self.ornekler, self.basla, self.notr_egim, self.notr_omuz, self.notr_dz = [], None, None, None, None
         self.deneme = 1
 
@@ -142,6 +147,7 @@ class Kalibrasyon:
             return
         if egim is None:
             self.ornekler, self.basla = [], None
+            self.deneme = 1
             return
         if self.basla is None:
             self.basla = simdi
@@ -159,7 +165,7 @@ class Kalibrasyon:
         if kipirdadi and self.deneme < KALIBRASYON_AZAMI_DENEME:
             self.deneme += 1
             self.basla = simdi - YERLESME_SN
-            self.ornekler = [(egim, omuz_px, dz)]
+            self.ornekler = []  # Sapmayı tetikleyen kare yeni pencereye taşınmaz.
             ek = ("; tolerans iki katına çıktı" if self.deneme == KALIBRASYON_ESNET_DENEME + 1
                   else "; son pencere hareket olsa da kabul edilecek" if self.deneme == KALIBRASYON_AZAMI_DENEME else "")
             print(f"Kalibrasyon: kıpırdama, deneme {self.deneme}/{KALIBRASYON_AZAMI_DENEME}{ek}", flush=True)
@@ -645,7 +651,7 @@ def main():
         try:
             os.makedirs(olcum_dizini, exist_ok=True)
             kayit_durumu["kayit"] = open(csv_yolu, "w", newline="", encoding="utf-8")
-            kayit_durumu["yazici"] = csv.DictWriter(kayit_durumu["kayit"], fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum", "aci", "kaynak", "kalibrasyon_kalan"), restval="")
+            kayit_durumu["yazici"] = csv.DictWriter(kayit_durumu["kayit"], fieldnames=CSV_BASLIK, restval="")
             kayit_durumu["yazici"].writeheader()
             print(f"Ölçüm kaydı: {csv_yolu}")
         except OSError as e:
@@ -713,6 +719,7 @@ def main():
 
 
 def gonder(soket, mesaj, kayit_durumu=None, ek=None):
+    mesaj = {**mesaj, "kalibrasyon_no": kalibrasyon_no}
     if kayit_durumu is not None:
         mesaj = {**mesaj, **kayit_durumu.get("kamera_bilgisi", {})}
     try:
@@ -722,7 +729,7 @@ def gonder(soket, mesaj, kayit_durumu=None, ek=None):
     if kayit_durumu is not None and kayit_durumu["yazici"] is not None:
         try:
             satir = {**mesaj, **(ek or {})}
-            satir.pop("kalibrasyon_deneme", None)  # Deneme UI için UDP'de; CSV'ye yalnız kalan süre eklenir.
+            satir.pop("kalibrasyon_deneme", None)  # Deneme UI için UDP'de; kalan süre ve kimlik CSV'de de tutulur.
             kayit_durumu["yazici"].writerow(satir)
             if time.monotonic() - kayit_durumu["son_flush"] >= 1.0:
                 kayit_durumu["kayit"].flush()
@@ -740,7 +747,7 @@ def gonder(soket, mesaj, kayit_durumu=None, ek=None):
 
 def sinyal_yok(simdi, kalibre=False, donuk=False):
     return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk, "sol_el": None, "sag_el": None, "tut": False,
-            "durum": "donuk" if donuk else "kisi_yok"}
+            "durum": "donuk" if donuk else "kisi_yok", "kalibrasyon_no": kalibrasyon_no}
 
 
 class GoruntuYayini:

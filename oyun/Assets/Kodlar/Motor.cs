@@ -10,6 +10,7 @@ public class Motor : MonoBehaviour
     public Yol yol;
     public Transform onTeker, arkaTeker;
     public event System.Action Sifirlandi;
+    public event System.Action PythonKalibrasyonuGerekli;
     public Transform govde;  // görsel olarak yana yatan kısım
 
     [Header("Dönüş")]
@@ -72,6 +73,7 @@ public class Motor : MonoBehaviour
     float oneYokSure;  // kalça bir an görünmeyince yumuşatma baştan başlamasın, ancak uzun kesintide
     bool ayarIstendi;
     bool pythonKalibreEtti;
+    int surusKalibrasyonNo;
     bool oncekiKlavye;
     float ayarBaslangic, egimToplam, oneToplam;
     int egimSayisi, oneSayisi;
@@ -146,6 +148,7 @@ public class Motor : MonoBehaviour
         EgimSifir = OneSifir = 0f;
         duzOne = null; oneYokSure = 0f;
         pythonKalibreEtti = true;
+        surusKalibrasyonNo = alici.KalibrasyonNo;
         BaslamaIzni = true;
     }
 
@@ -174,6 +177,12 @@ public class Motor : MonoBehaviour
         HassasiyetTuslari();
         if (menuAtlandi && Input.GetKeyDown(KeyCode.C)) kopru?.KalibreEt();
         if (!BaslamaIzni) return;
+        if (!menuAtlandi && !alici.KlavyeModu && alici.Bagli && Hal != Durum.Bitti &&
+            (alici.KalibrasyonNo > surusKalibrasyonNo || !alici.Kalibre))
+        {
+            PythonKalibrasyonuGerekli?.Invoke();
+            return;
+        }
         // Bağlıyken "kalibre değil" = Python yeniden kalibre ediyor, eski düzeltme kalmasın.
         // Bağlantı kısa kopunca (Bagli false) ofset korunur: C ile ayarlanan sıfır kaybolmasın.
         bool yenidenKalibre = alici.Bagli && !alici.Kalibre;
