@@ -165,7 +165,7 @@ public class Seyirciler : MonoBehaviour
 
         foreach (var kisi in kisiler)
         {
-            if (kisi.cakildi || kisi.kacti) continue;
+            if (kisi.izleyici || kisi.cakildi || kisi.kacti) continue;
             if (ipucu > kisi.indeks)
             {
                 kisi.kacti = true;
@@ -215,7 +215,7 @@ public class Seyirciler : MonoBehaviour
     public bool BekleyenSeyirci(bool sag, int motorIndeksi)
     {
         foreach (var kisi in kisiler)
-            if (!kisi.cakildi && !kisi.kacti && (kisi.taraf > 0) == sag &&
+            if (!kisi.izleyici && !kisi.cakildi && !kisi.kacti && (kisi.taraf > 0) == sag &&
                 motorIndeksi >= kisi.indeks - cakOnce && motorIndeksi <= kisi.indeks + cakSonra) return true;
         return false;
     }
