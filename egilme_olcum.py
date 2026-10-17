@@ -24,6 +24,8 @@ Kullanım:
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --yan
     .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --tam
+    .venv\\Scripts\\python.exe egilme_olcum.py http://192.168.1.144:4747/video --el
+--el el kaldirma protokolunu calistirir ve tam mod gibi 33 noktayi kaydeder.
 Kalçalar kadrajda görünmeli. Çıkış: q ya da Esc (o ana kadarki kayıt yine yazılır).
 """
 
@@ -71,6 +73,16 @@ TAM_EVRELER = [EVRELER[0]] + [
     ("DIK DUR", 4, "dik"),
     ("SOLA EGIL + ONE EGIL", 5, "sol_one"),
 ] * 2
+EL_EVRELER = [EVRELER[0]] + [
+    ("DIK DUR", 4, "dik"),
+    ("SOL ELINI KALDIR (bas hizasina)", 5, "sol_el"),
+    ("DIK DUR", 4, "dik"),
+    ("SAG ELINI KALDIR (bas hizasina)", 5, "sag_el"),
+    ("DIK DUR", 4, "dik"),
+    ("ONE EGIL + SOL ELINI KALDIR", 5, "one_sol_el"),
+    ("DIK DUR", 4, "dik"),
+    ("ONE EGIL + SAG ELINI KALDIR", 5, "one_sag_el"),
+] * 2
 GECIS_SN = 1.0  # her evrenin ilk ve son bu kadar saniyesi nötre katılmaz (yerleşme / erken davranma)
 
 
@@ -113,7 +125,8 @@ def ortalama(satirlar, alan):
 def main():
     yan = "--yan" in sys.argv
     tam = "--tam" in sys.argv
-    argumanlar = [a for a in sys.argv[1:] if a not in ("--yan", "--tam")]
+    el = "--el" in sys.argv
+    argumanlar = [a for a in sys.argv[1:] if a not in ("--yan", "--tam", "--el")]
     arg = argumanlar[0] if argumanlar else "0"
     kaynak = int(arg) if arg.isdigit() else arg
     aci = int(argumanlar[1]) if len(argumanlar) > 1 else (0 if isinstance(kaynak, int) else 90)
@@ -127,10 +140,10 @@ def main():
     kayit = []
     kamera = SonKare(kaynak)
     try:
-        evreler = TAM_EVRELER if tam else YAN_EVRELER if yan else EVRELER
-        olcum_dongusu(kamera, secenek, aci, kayit, evreler, tam=tam)
+        evreler = EL_EVRELER if el else TAM_EVRELER if tam else YAN_EVRELER if yan else EVRELER
+        olcum_dongusu(kamera, secenek, aci, kayit, evreler, tam=tam or el)
     finally:
-        yaz(kayit, "tam" if tam else "yan" if yan else "egilme")  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
+        yaz(kayit, "el" if el else "tam" if tam else "yan" if yan else "egilme")  # önce kayıt: kapanışta bir şey patlasa da veri kaybolmasın
         kamera.kapat()
         cv2.destroyAllWindows()
 
