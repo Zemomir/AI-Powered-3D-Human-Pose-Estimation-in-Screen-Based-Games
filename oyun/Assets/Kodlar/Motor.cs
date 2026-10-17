@@ -71,6 +71,7 @@ public class Motor : MonoBehaviour
     float? duzOne;  // yumuşatılmış öne sinyali; sinyal kopunca sıfırlanır, eski değer geri gelmesin
     float oneYokSure;  // kalça bir an görünmeyince yumuşatma baştan başlamasın, ancak uzun kesintide
     bool ayarIstendi;
+    bool pythonKalibreEtti;
     bool oncekiKlavye;
     float ayarBaslangic, egimToplam, oneToplam;
     int egimSayisi, oneSayisi;
@@ -130,6 +131,24 @@ public class Motor : MonoBehaviour
 
     public void YerindeAyarla() { ayarIstendi = true; }
 
+    public void PythonKalibrasyonunuBekle()
+    {
+        BaslamaIzni = false; pythonKalibreEtti = false;
+        Hal = Durum.Bekliyor;
+        Hiz = HedefHiz = 0f; duzOne = null; oneYokSure = 0f;
+        DuzeltilmisEgim = DuzeltilmisOne = null;
+        AyarOlcuyor = false; AyarKalanSn = 0f;
+    }
+
+    public void PythonKalibrasyonuylaBaslat()
+    {
+        // Nötr Python'da alındı; ikinci bir beş saniyelik ölçüm gerekmiyor.
+        EgimSifir = OneSifir = 0f;
+        duzOne = null; oneYokSure = 0f;
+        pythonKalibreEtti = true;
+        BaslamaIzni = true;
+    }
+
     public void Sifirla()
     {
         yolIndeksi = yol.BaslangicIndeksi;
@@ -138,6 +157,7 @@ public class Motor : MonoBehaviour
         Hiz = 0; Sure = 0; gorselYatma = 0; duzOne = null; oneYokSure = 0;
         if (govde != null) govde.localRotation = Quaternion.identity;
         Hal = Durum.Bekliyor;
+        pythonKalibreEtti = false;
         ayarIstendi = true;
         Sifirlandi?.Invoke();
     }
@@ -147,10 +167,12 @@ public class Motor : MonoBehaviour
         // Kamera adresine yazarken R/C ve sayılar oyun komutu olmasın.
         var secili = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
         if (secili != null && secili.GetComponent<UnityEngine.UI.InputField>()?.isFocused == true) return;
-        if (Input.GetKeyDown(KeyCode.R)) { kopru?.KalibreEt(); Sifirla(); }
+        // Menü akışında R/C hazırlık katmanını açar; atlanan menüde test yolu aynen kalır.
+        bool menuAtlandi = KopruYonetici.MenuAtlanir;
+        if (menuAtlandi && Input.GetKeyDown(KeyCode.R)) { kopru?.KalibreEt(); Sifirla(); }
         if (Input.GetKeyDown(KeyCode.Y)) YumusatmaAcik = !YumusatmaAcik;
         HassasiyetTuslari();
-        if (Input.GetKeyDown(KeyCode.C)) kopru?.KalibreEt();
+        if (menuAtlandi && Input.GetKeyDown(KeyCode.C)) kopru?.KalibreEt();
         if (!BaslamaIzni) return;
         // Bağlıyken "kalibre değil" = Python yeniden kalibre ediyor, eski düzeltme kalmasın.
         // Bağlantı kısa kopunca (Bagli false) ofset korunur: C ile ayarlanan sıfır kaybolmasın.
@@ -158,7 +180,7 @@ public class Motor : MonoBehaviour
         bool ofsetSil = alici.KlavyeModu || yenidenKalibre;
         if (ofsetSil && (OneSifir != 0f || EgimSifir != 0f)) { OneSifir = 0f; EgimSifir = 0f; duzOne = null; }
         if (yenidenKalibre) ayarIstendi = true;
-        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti)
+        if (menuAtlandi && Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti)
             ayarIstendi = true;
         DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - (alici.KlavyeModu ? 0f : EgimSifir) : (float?)null;
         DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - (alici.KlavyeModu ? 0f : OneSifir) : (float?)null;
@@ -171,6 +193,12 @@ public class Motor : MonoBehaviour
         }
         else if (oncekiKlavye) ayarIstendi = true;  // klavyeden kameraya dönüş: duruş yeniden ölçülsün
         oncekiKlavye = alici.KlavyeModu;
+        if (pythonKalibreEtti)
+        {
+            pythonKalibreEtti = false;
+            ayarIstendi = false;
+            Hal = Durum.Suruyor;
+        }
         if (Hal == Durum.Ayarlaniyor && !hazir) { ayarIstendi = true; Hal = Durum.SinyalYok; AyarOlcuyor = false; }
         if (Hal == Durum.Bitti) { HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 

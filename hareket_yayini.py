@@ -1,7 +1,7 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
 Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
-Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz,sol_el,sag_el,sol_bilek_gor,sag_bilek_gor,tut,ham_omuz_egim,durum,aci,kaynak sütunlarını içerir:
+Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz,sol_el,sag_el,sol_bilek_gor,sag_bilek_gor,tut,ham_omuz_egim,durum,aci,kaynak,kalibrasyon_kalan sütunlarını içerir:
     {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031, "sol_el": -1.5, "sag_el": 0.6, "tut": true}
   egim : kalça ortası -> omuz ortası açısının nötre göre farkı * GOVDE_OLCEK; + = kişi sağına eğik.
   ham_egim/notr_egim: ölçeklenmemiş gövde açısı/nötrü; ham_omuz_egim: karşılaştırma için omuz çizgisi.
@@ -46,8 +46,14 @@ MIN_GORUNURLUK = 0.5  # kamera_test ile aynı omuz görünürlüğü koşulu.
 
 HEDEF = ("127.0.0.1", 5065)
 GORUNTU_HEDEF = ("127.0.0.1", 5067)
-KALIBRASYON_SN = 3.0
+KALIBRASYON_SN = 2.5
 YERLESME_SN = 1.0  # 2026-10-17 deneme 1: yerleşme payı olmayan kalibrasyon kirlendi
+# Belirgin hareket nötrü kirletmesin; hemiplejik çocukta tam hareketsizlik
+# beklenemez: 3 başarısızlıktan sonra payı artır, 6. pencereyi mutlaka kabul et.
+KALIBRASYON_EGIM_ESIK = 4.0  # derece, pencerenin kendi ortalamasından sapma
+KALIBRASYON_OMUZ_ESIK = 0.08  # pencerenin omuz medyanına göre oran
+KALIBRASYON_ESNET_DENEME = 3
+KALIBRASYON_AZAMI_DENEME = 6
 SESSIZ_ARALIK_SN = 0.1
 # Oyun 0,5 sn mesaj almazsa "Python çalışmıyor" der; donma bundan önce bildirilsin ki
 # ekranda yanlış teşhis ("kamera bağlı değil") yanıp sönmesin.
@@ -124,13 +130,14 @@ class Kalibrasyon:
 
     def sifirla(self):
         self.ornekler, self.basla, self.notr_egim, self.notr_omuz, self.notr_dz = [], None, None, None, None
+        self.deneme = 1
 
     @property
     def tamam(self):
         return self.notr_egim is not None
 
     def besle(self, simdi, egim, omuz_px, dz):
-        """Kalibrasyon sürerken örnek toplar. Kişi kaybolursa sayaç baştan başlar."""
+        """Pozisyonu bekler; hareketli pencereyi yerleşme payını tekrarlamadan yeniler."""
         if self.tamam:
             return
         if egim is None:
@@ -142,8 +149,25 @@ class Kalibrasyon:
         if gecen < YERLESME_SN:
             return
         self.ornekler.append((egim, omuz_px, dz))
-        if gecen >= YERLESME_SN + KALIBRASYON_SN:
+        carpan = 2 if self.deneme > KALIBRASYON_ESNET_DENEME else 1
+        ort = statistics.mean(e for e, _, _ in self.ornekler)
+        omuzlar = [o for _, o, _ in self.ornekler if o is not None]
+        medyan = statistics.median(omuzlar) if omuzlar else None
+        kipirdadi = (any(abs(e - ort) > KALIBRASYON_EGIM_ESIK * carpan for e, _, _ in self.ornekler)
+                     or (medyan is not None and medyan > 0 and
+                         any(abs(o / medyan - 1) > KALIBRASYON_OMUZ_ESIK * carpan for o in omuzlar)))
+        if kipirdadi and self.deneme < KALIBRASYON_AZAMI_DENEME:
+            self.deneme += 1
+            self.basla = simdi - YERLESME_SN
+            self.ornekler = [(egim, omuz_px, dz)]
+            ek = ("; tolerans iki katına çıktı" if self.deneme == KALIBRASYON_ESNET_DENEME + 1
+                  else "; son pencere hareket olsa da kabul edilecek" if self.deneme == KALIBRASYON_AZAMI_DENEME else "")
+            print(f"Kalibrasyon: kıpırdama, deneme {self.deneme}/{KALIBRASYON_AZAMI_DENEME}{ek}", flush=True)
+            return
+        if simdi >= self.basla + YERLESME_SN + KALIBRASYON_SN:
             self.notr_al(self.ornekler)
+            if self.deneme == KALIBRASYON_AZAMI_DENEME:
+                print("Kalibrasyon: 6. pencerenin ortalama/medyanı kabul edildi", flush=True)
 
     def notr_al(self, ornekler):
         """Geçerli nötr örneklerini özetler; kayıt tekrarı da aynı hesabı kullanır."""
@@ -154,6 +178,8 @@ class Kalibrasyon:
         self.notr_dz = statistics.mean(dzler) if len(dzler) >= len(ornekler) / 2 else None
 
     def kalan(self, simdi):
+        if self.tamam:
+            return 0.0
         toplam = YERLESME_SN + KALIBRASYON_SN
         return toplam if self.basla is None else max(toplam - (simdi - self.basla), 0)
 
@@ -619,7 +645,7 @@ def main():
         try:
             os.makedirs(olcum_dizini, exist_ok=True)
             kayit_durumu["kayit"] = open(csv_yolu, "w", newline="", encoding="utf-8")
-            kayit_durumu["yazici"] = csv.DictWriter(kayit_durumu["kayit"], fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum", "aci", "kaynak"), restval="")
+            kayit_durumu["yazici"] = csv.DictWriter(kayit_durumu["kayit"], fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum", "aci", "kaynak", "kalibrasyon_kalan"), restval="")
             kayit_durumu["yazici"].writeheader()
             print(f"Ölçüm kaydı: {csv_yolu}")
         except OSError as e:
@@ -695,7 +721,9 @@ def gonder(soket, mesaj, kayit_durumu=None, ek=None):
         pass  # oyun kapalıyken Windows ICMP "port unreachable" hatası verebilir; kamera tarafı durmasın
     if kayit_durumu is not None and kayit_durumu["yazici"] is not None:
         try:
-            kayit_durumu["yazici"].writerow({**mesaj, **(ek or {})})
+            satir = {**mesaj, **(ek or {})}
+            satir.pop("kalibrasyon_deneme", None)  # Deneme UI için UDP'de; CSV'ye yalnız kalan süre eklenir.
+            kayit_durumu["yazici"].writerow(satir)
             if time.monotonic() - kayit_durumu["son_flush"] >= 1.0:
                 kayit_durumu["kayit"].flush()
                 kayit_durumu["son_flush"] = time.monotonic()
@@ -793,7 +821,11 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
                     # Akış dondu: susmak oyunu son değerde bırakır, açıkça "sinyal yok" de.
                     if bildirim is not None:
                         bildirim.durdur()
-                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu, {"saat": round(time.time(), 3)})
+                    kal.besle(simdi, None, None, None)  # Donuk geçen süre nötr ölçümüne sayılmasın.
+                    mesaj = sinyal_yok(simdi, kal.tamam, donuk=True)
+                    if not kal.tamam:
+                        mesaj.update(kalibrasyon_kalan=round(kal.kalan(simdi), 3), kalibrasyon_deneme=kal.deneme)
+                    gonder(soket, mesaj, kayit_durumu, {"saat": round(time.time(), 3)})
                     son_sessiz = simdi
                     isleyici.sifirla()
                 if onizleme and simdi - kare_zamani > DONMA_SANIYE:
@@ -841,6 +873,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
             mesaj = sinyal_yok(simdi, kal.tamam)
             mesaj["durum"] = ("kisi_yok" if omuz_px is None else "kalca_yok" if egim is None
                               else "hazir" if kal.tamam else "kalibrasyon")
+            if not kal.tamam:
+                mesaj.update(kalibrasyon_kalan=round(kal.kalan(simdi), 3), kalibrasyon_deneme=kal.deneme)
             sol_el, sag_el, sol_gor, sag_gor = el_olcum(sonuc, kare.shape[1], kare.shape[0], egim, omuz_px)
             mesaj.update(sol_el=sol_el, sag_el=sag_el)
             mesaj.update(isleyici.besle(simdi, kal, egim, omuz_px, sol_el, sag_el))

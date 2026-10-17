@@ -12,6 +12,7 @@ public class KameraOnizleme : MonoBehaviour
     public HareketAlici alici;
     const string AYAR = "KameraOnizlemeAcik";
     static KameraOnizleme etkin;
+    static bool buyuk;
     readonly object kilit = new object();
     UdpClient istemci;
     Thread dinleyici;
@@ -143,9 +144,32 @@ public class KameraOnizleme : MonoBehaviour
         etkin.GorunurlukUygula();
     }
 
+    public static void BuyukGoster(bool deger)
+    {
+        buyuk = deger;
+        if (etkin == null) return;
+        etkin.KonumUygula();
+        etkin.GorunurlukUygula();
+    }
+
+    void KonumUygula()
+    {
+        var r = panel.GetComponent<RectTransform>();
+        r.anchorMin = r.anchorMax = r.pivot = buyuk ? new Vector2(.5f, .5f) : new Vector2(1, 0);
+        r.anchoredPosition = buyuk ? Vector2.zero : new Vector2(-24, 24);
+        // 380×285 paneli içeriğiyle ölçekle: hazırlıkta 1920 referansında 760×570.
+        r.localScale = Vector3.one * (buyuk ? 2f : 1f);
+    }
+
     void GorunurlukUygula()
     {
-        panel.SetActive(acik && ilkKare && istemci != null && isActiveAndEnabled);
+        panel.SetActive((acik || buyuk) && (ilkKare || buyuk) && istemci != null && isActiveAndEnabled);
+        if (!ilkKare && buyuk)
+        {
+            goruntu.enabled = false;
+            beklemeMetni.gameObject.SetActive(true);
+            beklemeMetni.text = "Kamera görüntüsü bekleniyor…";
+        }
     }
 
     void ArayuzKur()
@@ -185,6 +209,7 @@ public class KameraOnizleme : MonoBehaviour
         oran.aspectRatio = 4f / 3f;
         beklemeMetni = Yazi(alan, "", 8, 0, 344, 198, 22);
         altMetin = Yazi(kok, "", 12, 239, 356, 38, 17);
+        KonumUygula();
         panel.SetActive(false);
     }
 

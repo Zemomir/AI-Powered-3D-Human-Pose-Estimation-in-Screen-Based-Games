@@ -11,14 +11,14 @@ public class AnaMenu : MonoBehaviour
     public KopruYonetici kopru;
     public Arayuz arayuz;
     public Ses ses;
-    public bool HudGizli => !atlandi && (ekran == Ekran.Menu || ekran == Ekran.MenuAyarlar || ekran == Ekran.Yerles || ekran == Ekran.Kalibre || ekran == Ekran.Ayar || ekran == Ekran.Duraklat || ekran == Ekran.DuraklatAyarlar);
+    public bool HudGizli => !atlandi && (ekran == Ekran.Menu || ekran == Ekran.MenuAyarlar || ekran == Ekran.Kalibre || ekran == Ekran.Duraklat || ekran == Ekran.DuraklatAyarlar);
 
-    enum Ekran { Menu, MenuAyarlar, Yerles, Kalibre, Ayar, Oyun, Duraklat, DuraklatAyarlar, Bitis }
+    enum Ekran { Menu, MenuAyarlar, Kalibre, Oyun, Duraklat, DuraklatAyarlar, Bitis }
     Ekran ekran;
     bool atlandi, onizleme, kalibrasyonGoruldu;
     int kalite;
     string adres;
-    float yerlesme, yerlesSon, kalibreSon;
+    float kalibreSon;
     int kalibreMesajNo;
     bool yenidenAraBekleniyor;
     float yenidenAraSon;
@@ -27,11 +27,11 @@ public class AnaMenu : MonoBehaviour
     Sprite yuvarlak;
     Texture2D yuvarlakDoku;
     GameObject canvasGo, menu, ayarlarEkrani, hazirlik, duraklat, bitis;
-    Text durum, kameraDurumu, nokta, sayim, aciklama, hizEtiket, donusEtiket, sureEtiket, rekor, secimBilgisi;
+    Text durum, kameraDurumu, nokta, sayim, aciklama, hazirlikAlt, hizEtiket, donusEtiket, rekor, secimBilgisi;
     Button basla;
     Button geriAyarlar;
     Button[] kaliteler;
-    Slider hiz, donus, sure;
+    Slider hiz, donus;
     Toggle sesAnahtari;
     InputField ip;
     OyunKaydi kayit;
@@ -52,9 +52,6 @@ public class AnaMenu : MonoBehaviour
         kayit = GetComponent<OyunKaydi>();
         adres = PlayerPrefs.GetString("TelefonAdresi", "192.168.1.144:4747");
         onizleme = PlayerPrefs.GetInt("KameraOnizlemeAcik", 1) != 0;
-        yerlesme = PlayerPrefs.GetFloat("YerlesmeSuresi", 8f);
-        if (!float.IsFinite(yerlesme)) yerlesme = 8f;
-        yerlesme = Mathf.Clamp(Mathf.Round(yerlesme), 3, 15);
         kalite = Mathf.Clamp(PlayerPrefs.GetInt("GrafikKalitesi", 0), 0, 2);
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         SpriteHazirla();
@@ -123,28 +120,24 @@ public class AnaMenu : MonoBehaviour
         donusEtiket = Yazi(oyun, "", 30, 185, 780, 42, 25, FontStyle.Bold);
         donus = Kaydirici(oyun, 30, 235, 775, .3f, 2f, PlayerPrefs.GetFloat("DonusHassasiyeti", Motor.VARSAYILAN_DONUS_HASSASIYETI));
         donus.onValueChanged.AddListener(v => motor.DonusHassasiyetiAyarla(v));
-        sureEtiket = Yazi(oyun, "", 30, 295, 780, 42, 25, FontStyle.Bold);
-        sure = Kaydirici(oyun, 30, 345, 775, 3, 15, yerlesme);
-        sure.wholeNumbers = true;
-        sure.onValueChanged.AddListener(v => { yerlesme = v; PlayerPrefs.SetFloat("YerlesmeSuresi", v); PlayerPrefs.Save(); });
-        sesAnahtari = Anahtar(oyun, "Ses a\u00e7\u0131k", 30, 420, 775, ses.SesAcik);
+        sesAnahtari = Anahtar(oyun, "Ses a\u00e7\u0131k", 30, 305, 775, ses.SesAcik);
         sesAnahtari.onValueChanged.AddListener(v => ses.SesAyarla(v));
-        Yazi(oyun, "Grafik kalitesi", 30, 515, 270, 50, 25);
+        Yazi(oyun, "Grafik kalitesi", 30, 400, 270, 50, 25);
         kaliteler = new Button[3];
         string[] adlar = { "Y\u00fcksek", "Orta", "D\u00fc\u015f\u00fck" };
         for (int i = 0; i < 3; i++)
         {
             int n = i;
-            kaliteler[i] = Dugme(oyun, adlar[i], 310 + i * 164, 510, 154, 58,
+            kaliteler[i] = Dugme(oyun, adlar[i], 310 + i * 164, 395, 154, 58,
                 () => { kalite = n; Grafik.Ayarla(n); SecimleriGuncelle(); });
         }
 
-        hazirlik = Katman("Yerine ge\u00e7me ve ayar", true);
-        var hazirAlan = Alan(hazirlik.transform, 1660, 940);
-        Yazi(hazirAlan, "Birazdan yola \u00e7\u0131k\u0131yoruz", 30, 100, 1600, 100, 55, FontStyle.Bold, TextAnchor.MiddleCenter);
-        aciklama = Yazi(hazirAlan, "", 60, 260, 1540, 190, 38, FontStyle.Normal, TextAnchor.MiddleCenter);
-        sayim = Yazi(hazirAlan, "", 130, 480, 1400, 140, 70, FontStyle.Bold, TextAnchor.MiddleCenter);
-        Dugme(hazirAlan, "Ana men\u00fc", 580, 740, 500, 88, AnaMenuyeDon);
+        hazirlik = Katman("Hazırlık", true);
+        var hazirAlan = Alan(hazirlik.transform, 1760, 1000);
+        aciklama = Yazi(hazirAlan, "", 0, 0, 1760, 100, 38, FontStyle.Bold, TextAnchor.MiddleCenter);
+        sayim = Yazi(hazirAlan, "", 0, 115, 1760, 90, 80, FontStyle.Bold, TextAnchor.MiddleCenter);
+        hazirlikAlt = Yazi(hazirAlan, "", 0, 800, 1760, 55, 27, FontStyle.Normal, TextAnchor.MiddleCenter);
+        Dugme(hazirAlan, "Ana men\u00fc", 630, 880, 500, 88, AnaMenuyeDon);
 
         duraklat = Katman("Duraklatma", true);
         var durakAlan = Alan(duraklat.transform, 800, 900);
@@ -200,32 +193,28 @@ public class AnaMenu : MonoBehaviour
         {
             if (ekran == Ekran.Duraklat) Devam();
             else if (ekran == Ekran.MenuAyarlar || ekran == Ekran.DuraklatAyarlar) AyarlardanDon();
-            else if (ekran == Ekran.Oyun || ekran == Ekran.Ayar) Goster(Ekran.Duraklat);
-            else if (ekran == Ekran.Yerles || ekran == Ekran.Kalibre) AnaMenuyeDon();
+            else if (ekran == Ekran.Oyun) Goster(Ekran.Duraklat);
+            else if (ekran == Ekran.Kalibre) AnaMenuyeDon();
         }
         if (ekran == Ekran.Bitis && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))) Baslat();
-        if (ekran == Ekran.Yerles && Time.realtimeSinceStartup >= yerlesSon)
-        {
-            kalibrasyonGoruldu = false;
-            kalibreMesajNo = alici.SonMesajNo;
-            kalibreSon = Time.realtimeSinceStartup;
-            kopru.KalibreEt();
-            Goster(Ekran.Kalibre);
-        }
+        var secili = EventSystem.current?.currentSelectedGameObject;
+        bool yaziyor = secili != null && secili.GetComponent<InputField>()?.isFocused == true;
+        if (!yaziyor && Input.GetKeyDown(KeyCode.R) &&
+            (ekran == Ekran.Oyun || ekran == Ekran.Bitis || ekran == Ekran.Duraklat || ekran == Ekran.Kalibre))
+        { motor.Sifirla(); HazirligaGec(); }
+        else if (!yaziyor && Input.GetKeyDown(KeyCode.C) && ekran == Ekran.Oyun && motor.Hal != Motor.Durum.Bitti)
+            HazirligaGec();
         if (ekran == Ekran.Kalibre)
         {
             if (alici.SonMesajNo > kalibreMesajNo && alici.Bagli &&
                 (alici.Durum == "kalibrasyon" || !alici.Kalibre)) kalibrasyonGoruldu = true;
             if (kalibrasyonGoruldu && alici.Bagli && alici.Durum == "hazir")
-            { motor.BaslamaIzni = true; Goster(Ekran.Ayar); }
+            { motor.PythonKalibrasyonuylaBaslat(); Goster(Ekran.Oyun); }
             // UDP komutu kaybolmuşsa hazır durumdaki köprüye yeniden gönder.
             else if (!kalibrasyonGoruldu && Time.realtimeSinceStartup - kalibreSon > 2f)
             { kopru.KalibreEt(); kalibreSon = Time.realtimeSinceStartup; }
         }
-        if (ekran == Ekran.Ayar && motor.Hal == Motor.Durum.Suruyor) Goster(Ekran.Oyun);
         if (ekran == Ekran.Oyun && motor.Hal == Motor.Durum.Bitti) Goster(Ekran.Bitis);
-        // R mevcut Motor.Sifirla yolunu kullanır; bitiş düğmelerini kaldır.
-        if (ekran == Ekran.Bitis && Input.GetKeyDown(KeyCode.R)) Goster(Ekran.Oyun);
     }
 
     void LateUpdate()
@@ -236,7 +225,6 @@ public class AnaMenu : MonoBehaviour
         sesAnahtari.SetIsOnWithoutNotify(ses.SesAcik);
         hizEtiket.text = $"Hız hassasiyeti   %{motor.HizHassasiyeti * 100:0}   (+ / −)";
         donusEtiket.text = $"Dönüş hassasiyeti   %{motor.DonusHassasiyeti * 100:0}   (1 / 2)";
-        sureEtiket.text = $"Yerine geçme süresi   {yerlesme:0} sn";
         rekor.text = ses.EnIyiSure > 0 ? "En iyi s\u00fcre: " + SureYazi(ses.EnIyiSure) : "En iyi s\u00fcre: \u2014";
         durum.text = KameraDurumYazisi();
         kameraDurumu.text = KameraDurumYazisi();
@@ -244,24 +232,15 @@ public class AnaMenu : MonoBehaviour
             alici.Kaynak + (alici.Aci.HasValue ? " · " + alici.Aci.Value + "°" : "") : "";
         bool hazir = alici.Bagli && alici.Durum == "hazir";
         nokta.color = kopru.Hata != null || !kopru.KurulumTamam ? new Color(1f, .35f, .3f) : hazir ? new Color(.35f, .9f, .6f) : vurgu;
-        basla.interactable = !AramaOnayiBekleniyor() && hazir && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
-        if (ekran == Ekran.Yerles)
+        basla.interactable = !AramaOnayiBekleniyor() && kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
+        if (ekran == Ekran.Kalibre)
         {
-            aciklama.text = "Yerine geç: kameradan 2-3 m uzakta,\nomuzların ve kalçaların görünsün";
-            sayim.text = Mathf.CeilToInt(Mathf.Max(0, yerlesSon - Time.realtimeSinceStartup)).ToString();
-            if (!hazir) sayim.text += "\n<size=30>" + Guvenli(DurumYazisi()) + "</size>";
-        }
-        else if (ekran == Ekran.Kalibre)
-        {
-            aciklama.text = "Oynayacağın gibi dur, kıpırdama.\nNötr duruşun alınıyor…";
-            sayim.text = "<size=34>" + Guvenli(DurumYazisi()) + "</size>";
-        }
-        else if (ekran == Ekran.Ayar)
-        {
-            aciklama.text = "Oynayacağın gibi dur, kıpırdama";
-            sayim.text = motor.Hal == Motor.Durum.Ayarlaniyor ?
-                (motor.AyarOlcuyor ? "<size=45>Ölçülüyor…</size>" : Mathf.CeilToInt(motor.AyarKalanSn).ToString()) :
-                "<size=34>" + Guvenli(DurumYazisi()) + "</size>";
+            bool olcuyor = kalibrasyonGoruldu && alici.Bagli && alici.Durum == "kalibrasyon";
+            aciklama.text = olcuyor ? "Kıpırdama" : "Kameranın önüne geç — omuzların ve kalçaların görünsün";
+            sayim.text = olcuyor && alici.KalibrasyonKalan.HasValue ?
+                Mathf.CeilToInt(Mathf.Max(0f, alici.KalibrasyonKalan.Value)).ToString() :
+                "<size=28>" + Guvenli(DurumYazisi()) + "</size>";
+            hazirlikAlt.text = olcuyor && alici.KalibrasyonDeneme > 1 ? "Biraz kıpırdadın, yeniden ölçüyorum" : "";
         }
     }
 
@@ -318,12 +297,20 @@ public class AnaMenu : MonoBehaviour
     void Baslat()
     {
         if (AramaOnayiBekleniyor()) return;
-        if (!kopru.KurulumTamam || !kopru.Hazir || !alici.Bagli || alici.Durum != "hazir" || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
+        if (!kopru.KurulumTamam || !kopru.Hazir || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
         { AnaMenuyeDon(); return; }
-        motor.BaslamaIzni = false;
-        Goster(Ekran.Yerles);
         motor.Sifirla();
-        yerlesSon = Time.realtimeSinceStartup + yerlesme;
+        HazirligaGec();
+    }
+
+    void HazirligaGec()
+    {
+        motor.PythonKalibrasyonunuBekle();
+        kalibrasyonGoruldu = false;
+        kalibreMesajNo = alici.SonMesajNo;
+        kalibreSon = Time.realtimeSinceStartup;
+        kopru.KalibreEt();
+        Goster(Ekran.Kalibre);
     }
 
     public void AnaMenuyeDon()
@@ -359,7 +346,7 @@ public class AnaMenu : MonoBehaviour
     {
         if (yeni == Ekran.Duraklat && ekran != Ekran.DuraklatAyarlar) moladanOnce = ekran;
         ekran = yeni;
-        bool mola = yeni == Ekran.Duraklat || yeni == Ekran.DuraklatAyarlar;
+        bool mola = yeni == Ekran.Kalibre || yeni == Ekran.Duraklat || yeni == Ekran.DuraklatAyarlar;
         // Gerçek saatle ölçülen ayara mola süresi karışmasın.
         if (!mola && !motor.enabled && motor.Hal == Motor.Durum.Ayarlaniyor) motor.YerindeAyarla();
         Time.timeScale = mola ? 0f : 1f;
@@ -372,7 +359,8 @@ public class AnaMenu : MonoBehaviour
         ses.Kis(mola);
         menu.SetActive(yeni == Ekran.Menu);
         ayarlarEkrani.SetActive(yeni == Ekran.MenuAyarlar || yeni == Ekran.DuraklatAyarlar);
-        hazirlik.SetActive(yeni == Ekran.Yerles || yeni == Ekran.Kalibre || yeni == Ekran.Ayar);
+        hazirlik.SetActive(yeni == Ekran.Kalibre);
+        KameraOnizleme.BuyukGoster(yeni == Ekran.Kalibre);
         duraklat.SetActive(yeni == Ekran.Duraklat);
         bitis.SetActive(yeni == Ekran.Bitis);
         Cursor.visible = yeni != Ekran.Oyun;
@@ -537,6 +525,7 @@ public class AnaMenu : MonoBehaviour
     {
         if (atlandi) return;
         Time.timeScale = 1f;
+        KameraOnizleme.BuyukGoster(false);
         if (ses != null) ses.Kis(false);
         if (canvasGo != null) Destroy(canvasGo);
         if (yuvarlak != null) Destroy(yuvarlak);
