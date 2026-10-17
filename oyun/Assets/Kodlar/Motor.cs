@@ -67,7 +67,8 @@ public class Motor : MonoBehaviour
     float? duzOne;  // yumuşatılmış öne sinyali; sinyal kopunca sıfırlanır, eski değer geri gelmesin
     float oneYokSure;  // kalça bir an görünmeyince yumuşatma baştan başlamasın, ancak uzun kesintide
     bool ayarIstendi;
-    float ayarGecenSn, egimToplam, oneToplam;
+    bool oncekiKlavye;
+    float ayarBaslangic, egimToplam, oneToplam;
     int egimSayisi, oneSayisi;
 
     void Start()
@@ -134,13 +135,19 @@ public class Motor : MonoBehaviour
         bool yenidenKalibre = alici.Bagli && !alici.Kalibre;
         bool ofsetSil = alici.KlavyeModu || yenidenKalibre;
         if (ofsetSil && (OneSifir != 0f || EgimSifir != 0f)) { OneSifir = 0f; EgimSifir = 0f; duzOne = null; }
-        if (yenidenKalibre && ofsetSil) ayarIstendi = true;
+        if (yenidenKalibre) ayarIstendi = true;
         if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti) ayarIstendi = true;
         DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - (alici.KlavyeModu ? 0f : EgimSifir) : (float?)null;
         DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - (alici.KlavyeModu ? 0f : OneSifir) : (float?)null;
         float? egim = DuzeltilmisEgim, one = DuzeltilmisOne;
         bool hazir = alici.Bagli && alici.Kalibre && egim.HasValue;
-        if (alici.KlavyeModu) { ayarIstendi = false; OneSifir = 0f; EgimSifir = 0f; }
+        if (alici.KlavyeModu)
+        {
+            ayarIstendi = false; OneSifir = 0f; EgimSifir = 0f;
+            if (Hal == Durum.Ayarlaniyor) { Hal = Durum.Suruyor; AyarOlcuyor = false; }  // klavyede ayar yok
+        }
+        else if (oncekiKlavye) ayarIstendi = true;  // klavyeden kameraya dönüş: duruş yeniden ölçülsün
+        oncekiKlavye = alici.KlavyeModu;
         if (Hal == Durum.Ayarlaniyor && !hazir) { ayarIstendi = true; Hal = Durum.SinyalYok; AyarOlcuyor = false; }
         if (Hal == Durum.Bitti) { HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 
@@ -157,14 +164,15 @@ public class Motor : MonoBehaviour
         }
         if (ayarIstendi)
         {
-            Hal = Durum.Ayarlaniyor; ayarGecenSn = 0f; egimToplam = oneToplam = 0f;
+            Hal = Durum.Ayarlaniyor; ayarBaslangic = Time.realtimeSinceStartup; egimToplam = oneToplam = 0f;
             egimSayisi = oneSayisi = 0; ayarIstendi = false;
         }
         if (Hal == Durum.Ayarlaniyor)
         {
             HedefHiz = 0; Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime);
             Ilerlet(0); Yatir(0); duzOne = null; oneYokSure = 0;
-            ayarGecenSn += Time.unscaledDeltaTime;
+            // Kare sürelerini toplamak yerine gerçek saat farkı: batchmode testinde toplam 5 sn yerine 3 sn'de doldu.
+            float ayarGecenSn = Time.realtimeSinceStartup - ayarBaslangic;
             AyarOlcuyor = ayarGecenSn >= Mathf.Max(0f, ayarBekleSn);
             AyarKalanSn = Mathf.Max(0f, ayarBekleSn + ayarOlcSn - ayarGecenSn);
             if (AyarOlcuyor)
@@ -174,8 +182,9 @@ public class Motor : MonoBehaviour
             }
             if (ayarGecenSn >= Mathf.Max(0f, ayarBekleSn) + Mathf.Max(0f, ayarOlcSn))
             {
-                if (egimSayisi > 0) EgimSifir = egimToplam / egimSayisi;
-                if (oneSayisi > 0) OneSifir = oneToplam / oneSayisi;
+                // Örnek yoksa (ör. kalça hiç görünmedi) eski, belki yanlış sıfır sessizce kalmasın: 0'a dön.
+                EgimSifir = egimSayisi > 0 ? egimToplam / egimSayisi : 0f;
+                OneSifir = oneSayisi > 0 ? oneToplam / oneSayisi : 0f;
                 DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - EgimSifir : (float?)null;
                 DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - OneSifir : (float?)null;
                 Hal = Durum.Suruyor; AyarOlcuyor = false;
