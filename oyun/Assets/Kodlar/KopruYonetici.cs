@@ -28,8 +28,7 @@ public class KopruYonetici : MonoBehaviour
     Process surec, kapananSurec;
     readonly object kilit = new object();
     readonly Queue<string> satirlar = new Queue<string>();
-    string sonStderr, kaynak = "0";
-    int aci;
+    string sonStderr, telefonUrl = "";
     bool onizleme, baslatBekliyor, mesajGeldi, isteniyor, yenidenBaglaniyor;
     volatile bool stdoutBitti, stderrBitti;
     int baslangicMesajNo;
@@ -99,28 +98,28 @@ public class KopruYonetici : MonoBehaviour
         KapanisiTamamla();
     }
 
-    public void KameraAyarla(string yeniKaynak, int yeniAci, bool yeniOnizleme)
+    public void KameraAyarla(string yeniTelefonUrl, bool yeniOnizleme)
     {
         if (TestModu) return;
-        bool kaynakDegisti = kaynak != yeniKaynak;
-        bool aciDegisti = aci != yeniAci, onizlemeDegisti = onizleme != yeniOnizleme;
+        bool kaynakDegisti = telefonUrl != yeniTelefonUrl;
+        bool onizlemeDegisti = onizleme != yeniOnizleme;
         if (kaynakDegisti)
         {
             // DroidCam kapanmış bağlantıyı 10–15 sn meşgul tutabilir.
             YenidenBaglanmaSuresiniAyarla();
             Durdur();
         }
-        kaynak = yeniKaynak; aci = yeniAci; onizleme = yeniOnizleme;
+        telefonUrl = yeniTelefonUrl; onizleme = yeniOnizleme;
         if (isteniyor && !kaynakDegisti)
         {
             if (Harici || (surec != null && !surec.HasExited))
             {
-                if (aciDegisti) Komut("aci", aci);
                 if (onizlemeDegisti) Komut("onizleme", onizleme ? 1 : 0);
             }
             return;
         }
         isteniyor = true;
+        Hata = null;
         // Alıcının elle açılmış bir köprüden en az bir mesaj görmesine zaman tanı.
         baslatZamani = Mathf.Max(Time.realtimeSinceStartup + .4f, acilisZamani + 1.2f, sonDurdurmaZamani + yenidenBaglanmaBeklemesi);
         yenidenBaglaniyor |= sonDurdurmaZamani + yenidenBaglanmaBeklemesi > Time.realtimeSinceStartup;
@@ -129,7 +128,8 @@ public class KopruYonetici : MonoBehaviour
 
     void YenidenBaglanmaSuresiniAyarla()
     {
-        float bekleme = kaynak.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? 15f : 1.2f;
+        // Arama, laptopu seçmeden önce telefonu da denemiş ve bırakmış olabilir.
+        float bekleme = !string.IsNullOrEmpty(telefonUrl) ? 15f : 1.2f;
         // Art arda tıklamalar, hâlâ kapanmakta olan gerçek kaynağın beklemesini kısaltmasın.
         yenidenBaglanmaBeklemesi = yenidenBaglaniyor ||
             Time.realtimeSinceStartup < sonDurdurmaZamani + yenidenBaglanmaBeklemesi ?
@@ -141,10 +141,18 @@ public class KopruYonetici : MonoBehaviour
         if (TestModu || Harici) return;
         YenidenBaglanmaSuresiniAyarla();
         Durdur();
+        Hata = null;
         isteniyor = true;
         baslatBekliyor = true;
         baslatZamani = Mathf.Max(Time.realtimeSinceStartup + .4f, sonDurdurmaZamani + yenidenBaglanmaBeklemesi);
         yenidenBaglaniyor |= sonDurdurmaZamani + yenidenBaglanmaBeklemesi > Time.realtimeSinceStartup;
+    }
+
+    public void YenidenAra()
+    {
+        if (TestModu) return;
+        if (Harici || (surec != null && !surec.HasExited)) Komut("yeniden_ara");
+        else if (!Baslatiliyor) YenidenDene();
     }
 
     void Update()
@@ -172,7 +180,7 @@ public class KopruYonetici : MonoBehaviour
             if (!surec.HasExited && !mesajGeldi && Time.realtimeSinceStartup >= sonrakiAyar)
             {
                 // İlk komut import/açılış sırasında port bağlanmadan gönderilmiş olabilir.
-                Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
+                Komut("onizleme", onizleme ? 1 : 0);
                 sonrakiAyar = Time.realtimeSinceStartup + .5f;
             }
             if (!surec.HasExited && alici != null && alici.SonMesajNo > baslangicMesajNo && alici.SonMesajYasi < 1f)
@@ -187,7 +195,7 @@ public class KopruYonetici : MonoBehaviour
                 Hata = kod == 0 ? "Köprü kapatıldı" :
                     kod == 1 && sebep != null && (sebep.Contains("ModuleNotFoundError") || sebep.Contains("ImportError")) ?
                     "Kurulum eksik: kurulum.bat'ı yeniden çalıştır" :
-                    (kod == 2 ? "Kamera açılamadı: " : $"Köprü kapandı (kod {kod}): ") +
+                    (kod == 2 ? (sebep != null && sebep.StartsWith("Kamera bulunamadı", StringComparison.Ordinal) ? "" : "Kamera bulunamadı: ") : $"Köprü kapandı (kod {kod}): ") +
                     (string.IsNullOrEmpty(sebep) ? "Sebep bildirilmedi" : sebep);
                 surec.Dispose(); surec = null;
                 YenidenBaglanmaSuresiniAyarla();
@@ -208,7 +216,7 @@ public class KopruYonetici : MonoBehaviour
         {
             Harici = true;
             Hata = null;
-            Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
+            Komut("onizleme", onizleme ? 1 : 0);
             return;
         }
         if (surec != null || !KurulumTamam) return;
@@ -219,8 +227,9 @@ public class KopruYonetici : MonoBehaviour
             var bilgi = new ProcessStartInfo
             {
                 FileName = PythonYolu,
-                Arguments = Tirnakla(Path.Combine(KopruKlasoru, "hareket_yayini.py")) + " " + Tirnakla(kaynak) +
-                    " " + aci + " --onizleme " + (onizleme ? "1" : "0") + " --ebeveyn " + KendiPid(),
+                Arguments = Tirnakla(Path.Combine(KopruKlasoru, "hareket_yayini.py")) + " oto" +
+                    (string.IsNullOrEmpty(telefonUrl) ? "" : " --telefon " + Tirnakla(telefonUrl)) +
+                    " --onizleme " + (onizleme ? "1" : "0") + " --ebeveyn " + KendiPid(),
                 UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = KopruKlasoru,
                 RedirectStandardOutput = true, RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
@@ -237,7 +246,7 @@ public class KopruYonetici : MonoBehaviour
             surec.BeginOutputReadLine(); surec.BeginErrorReadLine();
             mesajGeldi = false;
             // Açılış sırasında değişmiş ayarlar da yeni komut dinleyicisine ulaşsın.
-            Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
+            Komut("onizleme", onizleme ? 1 : 0);
         }
         catch (Exception e)
         {

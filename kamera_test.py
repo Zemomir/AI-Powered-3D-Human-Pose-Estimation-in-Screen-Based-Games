@@ -42,17 +42,24 @@ class SonKare:
     görüntü saniyeler geriden gelir. Eski kareleri atmak gecikmeyi sabit tutar.
     """
 
-    def __init__(self, kaynak):
+    def __init__(self, kaynak, sessiz=False):
         if isinstance(kaynak, int) and os.name == "nt":
             self.cap = cv2.VideoCapture(kaynak, cv2.CAP_DSHOW)
             if not self.cap.isOpened():
                 self.cap.release()
                 self.cap = cv2.VideoCapture(kaynak)
+        elif isinstance(kaynak, str) and "://" in kaynak:
+            # Açılış/okuma parametreleri open() sırasında verilmeli; sonradan set etkisizdir.
+            self.cap = cv2.VideoCapture(kaynak, cv2.CAP_FFMPEG, [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000,
+            ])
         else:
             self.cap = cv2.VideoCapture(kaynak)
         if not self.cap.isOpened():
             self.cap.release()
-            print(f"Kamera açılamadı: {kaynak!r}; bağlantıyı ve kamera iznini kontrol edin.", file=sys.stderr)
+            if not sessiz:
+                print(f"Kamera açılamadı: {kaynak!r}; bağlantıyı ve kamera iznini kontrol edin.", file=sys.stderr)
             raise SystemExit(2)
         self.kare = None
         self.no = 0
@@ -92,7 +99,7 @@ class SonKare:
 
     def kapat(self):
         self.calisiyor = False
-        self.is_parcacigi.join(timeout=2)
+        self.is_parcacigi.join(timeout=3.5)  # ağ okumasının 3 sn zaman aşımını da bekle
         if self.is_parcacigi.is_alive():
             print("Kamera serbest bırakılamadı (okuma takılı kaldı).", file=sys.stderr)
 
