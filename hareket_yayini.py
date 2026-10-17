@@ -52,6 +52,7 @@ GOVDE_OLCEK = 1.6  # tam_20261017_175142.csv: omuz/gövde oranı 1,35–1,89, or
 EL_TUT_BASLA = -1.0
 EL_TUT_BIRAK = -1.2
 EL_TUT_NULL_SN = 0.5
+AZAMI_TUT_SN = 4.0
 EL_GECMIS_SN = 1.5
 # 2026-10-17, analiz/el_tekrar.py --tara, el_20261017_204716 + tam_20261017_175142:
 # 4 el farkı <=1,5 cm, öne+el sabitleri >=1,5 cm sağlayan en küçük zaman çifti.
@@ -162,6 +163,8 @@ class HizTutucu:
     def sifirla(self):
         self.tutuluyor = False
         self.deger = self.kaynak_zamani = self.null_basla = self.birak_basla = None
+        self.tut_basla = None
+        self.yeniden_kur_bekle = False
         self.gecmis = deque()
         self.sakin_zamanlar = deque()
 
@@ -183,17 +186,28 @@ class HizTutucu:
                 self.null_basla = simdi
             if simdi - self.null_basla >= EL_TUT_NULL_SN:
                 self.tutuluyor = False
+                self.tut_basla = None
         else:
             self.null_basla = None
-            if sol_el is not None and sag_el is not None and max(sol_el, sag_el) < EL_TUT_BIRAK:
+            gorunen = [el for el in (sol_el, sag_el) if el is not None]
+            if gorunen and all(el < EL_TUT_BIRAK for el in gorunen):
+                self.yeniden_kur_bekle = False
                 if self.birak_basla is None:
                     self.birak_basla = simdi
                 if simdi - self.birak_basla >= self.birak_gecikme_sn:
                     self.tutuluyor = False
+                    self.tut_basla = None
             else:
                 # Eksik el veya yeniden yükseliş, kesintisiz iniş süresini bozar.
                 self.birak_basla = None
-        if not self.tutuluyor and any(el is not None and el > EL_TUT_BASLA for el in (sol_el, sag_el)):
+        if self.tutuluyor and self.tut_basla is not None and simdi - self.tut_basla >= AZAMI_TUT_SN:
+            self.tutuluyor = False
+            self.tut_basla = None
+            # Donuk hız, kayan hızdan kötü: uzun tutmayı kes, ama kalkık elin
+            # hız değişimini hemen yeniden dondurmasına el -1,2 altına inene dek izin verme.
+            self.yeniden_kur_bekle = True
+        if (not self.tutuluyor and not self.yeniden_kur_bekle
+                and any(el is not None and el > EL_TUT_BASLA for el in (sol_el, sag_el))):
             if self.sakin_esik is None:
                 hedef = simdi - self.geri_bak_sn
             else:
@@ -201,6 +215,7 @@ class HizTutucu:
             self.kaynak_zamani, self.deger = next(
                 ((t, o) for t, o in reversed(self.gecmis) if t <= hedef), self.gecmis[0])
             self.tutuluyor = True
+            self.tut_basla = simdi
             self.birak_basla = None
         return self.deger if self.tutuluyor else one
 

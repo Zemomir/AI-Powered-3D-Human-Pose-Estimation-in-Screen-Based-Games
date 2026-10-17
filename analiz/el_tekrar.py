@@ -70,18 +70,35 @@ def saf_kontroller():
     assert h.besle(0.2, -0.06, -1.1, -1.5) == 0.01
     assert h.besle(0.3, -0.06, EL_TUT_BIRAK, -1.5) == 0.01
     assert h.besle(0.4, 0.02, -1.21, -1.5) == 0.01 and h.tutuluyor
-    assert h.besle(0.6, 0.02, None, -1.5) == 0.01  # eksik el bırakmaz, süreyi keser
+    # Görünen el eşik altındaysa eksik el bırakmayı engellemez; gecikme sürer.
+    assert h.besle(0.6, 0.02, None, -1.5) == 0.01
     assert h.besle(0.7, 0.02, -1.21, -1.5) == 0.01
-    assert h.besle(0.99, 0.02, -1.21, -1.5) == 0.01
-    assert h.besle(1.01, 0.02, -1.21, -1.5) == 0.02 and not h.tutuluyor
+    assert h.besle(0.99, 0.02, -1.21, -1.5) == 0.02 and not h.tutuluyor
+    # Tek el sürekli görünmezken görünen elin inişi tutmayı bırakabilmeli.
+    h.sifirla()
+    h.besle(0, 0.01, None, -1.5)
+    assert h.besle(0.1, 0.01, None, -0.9) == 0.01 and h.tutuluyor
+    assert h.besle(0.2, 0.02, None, -1.21) == 0.01 and h.tutuluyor
+    assert h.besle(0.5, 0.02, None, -1.21) == 0.02 and not h.tutuluyor
+    # Beş saniye kalkık kalan elde 4 sn'de bırak; inişe dek kilitli kal.
+    h = HizTutucu(geri_bak_sn=0.5, birak_gecikme_sn=0)
+    h.besle(0, 0.01, 0, -1.5)
+    assert h.besle(0.1, 0.02, 0, -0.9) == 0.01 and h.tutuluyor
+    for i in range(1, 50):
+        t = 0.1 + i * 0.1
+        v = h.besle(t, 0.02, 0, -0.9)
+    assert not h.tutuluyor and v == 0.02
+    h.besle(5.1, 0.03, 0, -1.3)
+    h.besle(5.2, 0.04, 0, -0.9)
     h.sifirla()
     h.besle(1, 0.01, -1.5, 0)
     assert h.besle(2, -0.05, None, None) == 0.01
     assert h.besle(2.499, -0.05, None, None) == 0.01
     assert h.besle(2.5, -0.05, None, None) == -0.05 and not h.tutuluyor
     h.sifirla()
-    h.besle(3, 0.01, 0, -1.5)
-    assert h.besle(3.01, -0.05, None, -1.5) == 0.01 and h.tutuluyor
+    h.besle(3, 0.01, 0, -0.9)
+    # Yeni kural: görünen tek el eşik altındaysa eksik el bırakmayı engellemez (gecikme 0).
+    assert h.besle(3.01, -0.05, None, -1.5) == -0.05 and not h.tutuluyor
     assert h.besle(3.1, None, 0, -1.5) is None and not h.tutuluyor
     h.besle(4, 0.01, 0, -1.5)
     h.sifirla()
@@ -213,22 +230,28 @@ def tablo(yol, sonuc):
               + f"|{ort(ss, 'tut') * 100:.1f}|{say(o['onceki_dik'])}|{say(o['fark'])}")
     sarkik = [(el, evre, s["evrede_sn"]) for (evre, etiket), ss in evreler.items() if "el" not in etiket
               for s in ss for el in (s["sol_el"], s["sag_el"]) if el is not None]
-    tepe, evre, sn = max(sarkik, key=lambda s: s[0])
-    print(f"Sarkik_max={tepe:.2f}@{evre}/{sn};baslama_payi={EL_TUT_BASLA-tepe:.2f};birakma_payi={EL_TUT_BIRAK-tepe:.2f}")
+    if sarkik:
+        tepe, evre, sn = max(sarkik, key=lambda s: s[0])
+        print(f"Sarkik_max={tepe:.2f}@{evre}/{sn};baslama_payi={EL_TUT_BASLA-tepe:.2f};birakma_payi={EL_TUT_BIRAK-tepe:.2f}")
+    else:
+        print("Sarkik_max=null")
     if ilk_tut is not None:
         print("Ilk_tut=" + ilk_tut)
     for etiket in ("sag", "sol", "sol_el", "sag_el"):
         gruplar = [ss for (_, ad), ss in evreler.items() if ad == etiket]
         if gruplar:
-            govde = statistics.mean(ort(ss, "govde") for ss in gruplar)
-            omuz = statistics.mean(ort(ss, "omuz") for ss in gruplar)
-            print(f"Evre_ort/{etiket}:govde={govde:+.2f};omuz={omuz:+.2f}")
+            govdeler = [ort(ss, "govde") for ss in gruplar]
+            omuzlar = [ort(ss, "omuz") for ss in gruplar]
+            govde = statistics.mean(v for v in govdeler if v is not None) if any(v is not None for v in govdeler) else None
+            omuz = statistics.mean(v for v in omuzlar if v is not None) if any(v is not None for v in omuzlar) else None
+            print(f"Evre_ort/{etiket}:govde={say(govde)};omuz={say(omuz)}")
     eller = [s for (_, etiket), ss in evreler.items() if "el" in etiket for s in ss]
     sol_evreleri = [ss for (_, etiket), ss in evreler.items() if etiket == "sol_el"]
     if sol_evreleri:
         farklar, one, hiz_ok = hedef(ozet)
-        donus_tepe = max(abs(s["donus"]) for s in eller if s["donus"] is not None)
-        print(f"Hiz_hedefi={'GECTI' if hiz_ok else 'KALDI'};el_donus_tepe={donus_tepe:.2f}")
+        donusler = [abs(s["donus"]) for s in eller if s["donus"] is not None]
+        donus_tepe = max(donusler) if donusler else None
+        print(f"Hiz_hedefi={'GECTI' if hiz_ok else 'KALDI'};el_donus_tepe={say(donus_tepe)}")
         print("El_farklari=" + "/".join(say(d) for d in farklar)
               + ";one_sabit_min=" + "/".join(say(d) for d in one))
     for (evre, etiket), olay in sira.items():
