@@ -21,6 +21,7 @@ public class OyunKaydi : MonoBehaviour
     StreamWriter yazici;
     float sonSatir, sonFlush;
     bool uyariVerildi;
+    readonly System.Collections.Generic.List<string> tuslar = new System.Collections.Generic.List<string>();
 
     void Start()
     {
@@ -67,7 +68,7 @@ public class OyunKaydi : MonoBehaviour
 
     string TusOlayi()
     {
-        var tuslar = new System.Collections.Generic.List<string>();
+        tuslar.Clear();
         if (Input.GetKeyDown(KeyCode.R)) tuslar.Add("R");
         if (Input.GetKeyDown(KeyCode.C)) tuslar.Add("C");
         if (Input.GetKeyDown(KeyCode.Y)) tuslar.Add("Y");

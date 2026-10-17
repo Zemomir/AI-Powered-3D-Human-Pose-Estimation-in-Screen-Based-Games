@@ -77,11 +77,15 @@ public static class SahneKur
 
         var ses = oyun.AddComponent<Ses>();
         ses.motor = motor;
+        ses.alici = alici;
         var yildizlar = oyun.AddComponent<Yildizlar>();
         yildizlar.yol = yol;
         yildizlar.motor = motor;
         yildizlar.ses = ses;
         yildizlar.malzeme = yildiz;
+        var otoPilot = oyun.AddComponent<OtoPilot>();
+        otoPilot.motor = motor;
+        otoPilot.yildizlar = yildizlar;
         var cevre = new GameObject("Cevre").AddComponent<Cevre>();
         cevre.yol = yol;
         cevre.agacGovde = agacGovde;

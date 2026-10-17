@@ -1,9 +1,11 @@
 using UnityEngine;
+using System;
 
 // Yumuşak sinüs tonları; ses dosyası gerekmez. Rekor da durum geçişinde tutulur.
 public class Ses : MonoBehaviour
 {
     public Motor motor;
+    public HareketAlici alici;
     public bool SesAcik { get; private set; }
     public float EnIyiSure { get; private set; }
     public bool YeniRekor { get; private set; }
@@ -46,11 +48,13 @@ public class Ses : MonoBehaviour
     void LateUpdate()
     {
         if (motor == null) return;
-        if (oncekiHal == Motor.Durum.Ayarlaniyor && motor.Hal == Motor.Durum.Suruyor) Cal(basla);
+        if ((oncekiHal == Motor.Durum.Ayarlaniyor || oncekiHal == Motor.Durum.Bekliyor) && motor.Hal == Motor.Durum.Suruyor) Cal(basla);
         if (oncekiHal != Motor.Durum.Bitti && motor.Hal == Motor.Durum.Bitti)
         {
             Cal(bitis);
-            YeniRekor = float.IsFinite(motor.Sure) && motor.Sure > 0 && (EnIyiSure <= 0 || motor.Sure < EnIyiSure);
+            bool otopilot = Array.IndexOf(Environment.GetCommandLineArgs(), "-otopilot") >= 0;
+            bool rekorUygun = (alici == null || !alici.KlavyeModu) && !otopilot;
+            YeniRekor = rekorUygun && float.IsFinite(motor.Sure) && motor.Sure > 0 && (EnIyiSure <= 0 || motor.Sure < EnIyiSure);
             if (YeniRekor)
             {
                 EnIyiSure = motor.Sure;
