@@ -33,9 +33,9 @@ public class Arayuz : MonoBehaviour
         else if (alici.PortHatasi != null && !alici.KlavyeModu) orta = alici.PortHatasi;
         else if (!alici.Bagli) orta = "Kamera bağlı değil\nhareket_yayini.py çalışıyor mu?";
         else if (alici.GoruntuDonuk) orta = "Telefondan görüntü gelmiyor\nDroidCam açık mı?";
-        else if (!alici.Kalibre) orta = "Oynayacağın gibi rahat otur\nayarlanıyor...";
+        else if (!alici.Kalibre) orta = "Oynayacağın gibi dur\nayarlanıyor...";
         else if (!alici.Egim.HasValue) orta = "Kamera seni göremiyor\nomuzların görünsün";
-        else if (motor.Hal == Motor.Durum.Ayarlaniyor) orta = motor.AyarOlcuyor ? "Ölçülüyor... kıpırdama" : $"Rahat otur, kıpırdama\n{Mathf.CeilToInt(motor.AyarKalanSn)}";
+        else if (motor.Hal == Motor.Durum.Ayarlaniyor) orta = motor.AyarOlcuyor ? "Ölçülüyor... kıpırdama" : $"Oynayacağın gibi dur, kıpırdama\n{Mathf.CeilToInt(motor.AyarKalanSn)}";
         else if (motor.YolDisinda) orta = "Yola dön";
         if (orta != null) Golgeli(new Rect(0, h * 0.3f, Screen.width, h * 0.3f), orta, buyuk);
     }

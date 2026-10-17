@@ -11,7 +11,8 @@ Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre
   oyun ~0,5 sn mesaj almazsa kendisi "sinyal yok" saymalı (betik çökerse null gönderemez).
 
 Kalibrasyon: kişi göründükten sonra YERLESME_SN atlanır (yerleşme, c'ye basan elin dönüşü),
-sonraki KALIBRASYON_SN'nin ortalaması nötr sayılır (yan eğim de: çocuğun dinlenme duruşu asimetrik olabilir). c tuşu yeniden kalibre eder.
+sonraki KALIBRASYON_SN'de nötr alınır: yan eğim ortalamayla (çocuğun dinlenme duruşu asimetrik olabilir),
+omuz genişliği medyanla (tek tük kötü kareye dayanıklı). c tuşu yeniden kalibre eder.
 
 Kullanım:
     .venv\\Scripts\\python.exe hareket_yayini.py http://192.168.1.144:4747/video
@@ -56,7 +57,8 @@ def ham_olcum(sonuc, g, y):
     if min(n[i].visibility or 0 for i in OMUZLAR) < MIN_GORUNURLUK:
         return None, None, None
     egim = omuz_egimi(n, g, y)
-    omuz_px = math.hypot((n[11].x - n[12].x) * g, (n[11].y - n[12].y) * y)
+    # Kare genişliğine oran: akışın çözünürlüğü değişirse (yeniden bağlanma) nötrle oran bozulmasın.
+    omuz_px = math.hypot((n[11].x - n[12].x) * g, (n[11].y - n[12].y) * y) / g
     dz = None
     if sonuc.pose_world_landmarks and min(n[i].visibility or 0 for i in KALCALAR) >= MIN_GORUNURLUK:
         w = sonuc.pose_world_landmarks[0]
@@ -226,7 +228,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 e = egim - kal.notr_egim
                 duz_egim = e if duz_egim is None else YUMUSATMA * e + (1 - YUMUSATMA) * duz_egim
                 mesaj["egim"] = round(duz_egim, 2)
-                if omuz_px is not None and kal.notr_omuz is not None and kal.notr_omuz >= 1:
+                # notr_omuz kare genişliğine oran (~0,2); %1'in altı anlamsız (omuz noktaları üst üste)
+                if omuz_px is not None and kal.notr_omuz is not None and kal.notr_omuz >= 0.01:
                     r = omuz_px / kal.notr_omuz - 1
                     o = r * ONE_OLCEK if r >= 0 else r * GERI_OLCEK
                     duz_one = o if duz_one is None else YUMUSATMA * o + (1 - YUMUSATMA) * duz_one
@@ -242,19 +245,19 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 "ham_dz": round(dz, 4) if dz is not None else None,
                 "notr_egim": round(kal.notr_egim, 2) if kal.notr_egim is not None else None,
                 "notr_dz": round(kal.notr_dz, 4) if kal.notr_dz is not None else None,
-                "ham_omuz": round(omuz_px, 2) if omuz_px is not None else None,
-                "notr_omuz": round(kal.notr_omuz, 2) if kal.notr_omuz is not None else None,
+                "ham_omuz": round(omuz_px, 5) if omuz_px is not None else None,
+                "notr_omuz": round(kal.notr_omuz, 5) if kal.notr_omuz is not None else None,
             }
             gonder(soket, mesaj, kayit_durumu, ek)
 
             if not kal.tamam:
-                durum = f"KALIBRASYON: oynayacagin gibi rahat otur  {kal.kalan(simdi):.0f}" if egim is not None else "KALIBRASYON: omuzlar gorunsun"
+                durum = f"KALIBRASYON: oynayacagin gibi dur, kipirdama  {kal.kalan(simdi):.0f}" if egim is not None else "KALIBRASYON: omuzlar gorunsun"
             elif mesaj["egim"] is None:
                 durum = "kisi / omuz gorunmuyor"
             else:
                 if mesaj["one"] is not None:
                     one = f"{mesaj['one'] * 100:+.1f} cm"
-                elif kal.notr_omuz is None or kal.notr_omuz < 1:
+                elif kal.notr_omuz is None or kal.notr_omuz < 0.01:
                     one = "omuz notru yok (c: yeniden kalibre)"
                 else:
                     one = "omuz yok"
