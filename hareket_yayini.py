@@ -36,6 +36,7 @@ import time
 import statistics
 import argparse
 import threading
+import queue
 from collections import deque
 
 # Saf ölçüm ve tekrar analizi kamera paketleri olmadan import edilebilir.
@@ -251,8 +252,8 @@ class HareketIsleyici:
                 "tut": self.tutucu.tutuluyor}
 
 
-def ebeveyn_yasiyor(pid):
-    """Windows'ta sinyal göndermeden süreç durumunu sorgular."""
+def ebeveyn_izle(pid, dur):
+    """Aynı Windows tutamacını bekler; PID yeniden kullanılsa da ebeveyn değişmez."""
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes
@@ -265,45 +266,101 @@ def ebeveyn_yasiyor(pid):
         api.CloseHandle.restype = wintypes.BOOL
         h = api.OpenProcess(0x00100000 | 0x1000, False, pid)
         if not h:
-            return False
+            if ctypes.get_last_error() == 5:  # Erişim engelli: yaşıyor say, yeniden açmayı deneme.
+                dur.wait()
+            else:
+                dur.set()
+            return
         try:
-            return api.WaitForSingleObject(h, 0) == 0x00000102  # WAIT_TIMEOUT: yaşıyor
+            while not dur.is_set():
+                if api.WaitForSingleObject(h, 1000) != 0x00000102:  # WAIT_TIMEOUT
+                    dur.set()
+                    return
         finally:
             api.CloseHandle(h)
-    try:
-        os.kill(pid, 0)  # Yalnız POSIX; Windows bu yola girmez.
-        return True
-    except OSError:
-        return False
-
-
-def ebeveyn_izle(pid, dur):
+        return
+    # POSIX'te sinyal göndermeden ebeveynin hâlâ aynı süreç olduğunu denetle.
     while not dur.is_set():
-        if not ebeveyn_yasiyor(pid):
+        if os.getppid() != pid:
             dur.set()
             return
         dur.wait(1.0)
 
 
-def komutlari_oku(kanal, kal, isleyici, dur):
-    if kanal is None:
-        return
-    while True:
+def komut_izle(kanal, bekleyen, dur):
+    # Kamera açılışı OpenCV içinde beklese bile çıkış komutu hemen görülsün.
+    while not dur.is_set():
         try:
             veri, _ = kanal.recvfrom(4096)
-        except BlockingIOError:
-            return
+        except socket.timeout:
+            continue
         except OSError:
             return
         try:
-            komut = json.loads(veri.decode("utf-8")).get("komut")
+            mesaj = json.loads(veri.decode("utf-8"))
+            komut = mesaj.get("komut")
         except (ValueError, UnicodeError, AttributeError):
             continue
         if komut == "cik":
             dur.set()
-        elif komut == "kalibre":
+        else:
+            bekleyen.put(mesaj)
+
+
+def komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme):
+    while bekleyen is not None and not dur.is_set():
+        try:
+            mesaj = bekleyen.get_nowait()
+        except queue.Empty:
+            break
+        komut, deger = mesaj.get("komut"), mesaj.get("deger")
+        if komut == "kalibre":
             kal.sifirla()
             isleyici.sifirla()
+        elif komut == "aci" and type(deger) is int and deger in DONDURME:
+            if aci != deger:
+                aci = deger
+                kal.sifirla()
+                isleyici.sifirla()
+        elif komut == "onizleme" and type(deger) is int and deger in (0, 1):
+            if onizleme and not deger:
+                cv2.destroyAllWindows()
+            onizleme = bool(deger)
+    return aci, onizleme
+
+
+def kamera_ac(kaynak, dur, sinif):
+    """Engellenen OpenCV açılışını beklerken ana iş parçacığı çıkabilsin."""
+    if dur.is_set():
+        return None
+    sonuc, kilit, bitti = {}, threading.Lock(), threading.Event()
+
+    def ac():
+        try:
+            kamera = sinif(kaynak)
+            with kilit:
+                if dur.is_set():
+                    kamera.kapat()
+                else:
+                    sonuc["kamera"] = kamera
+        except BaseException as e:
+            with kilit:
+                sonuc["hata"] = e
+        finally:
+            bitti.set()
+
+    threading.Thread(target=ac, daemon=True).start()
+    while not bitti.is_set() and not dur.wait(0.05):
+        pass
+    with kilit:
+        kamera = sonuc.get("kamera")
+        if dur.is_set():
+            if kamera is not None:
+                kamera.kapat()
+            return None
+        if "hata" in sonuc:
+            raise sonuc["hata"]
+        return kamera
 
 
 def main():
@@ -330,55 +387,67 @@ def main():
         base_options=BaseOptions(model_asset_path=str(MODEL)),
         running_mode=vision.RunningMode.VIDEO,
     )
-    kamera = SonKare(kaynak)
-    soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    kanal = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        kanal.bind(("127.0.0.1", 5066))
-        kanal.setblocking(False)
-    except OSError as e:
-        print(f"Komut portu 5066 açılamadı, komutsuz devam ediliyor: {e}", file=sys.stderr)
-        kanal.close()
-        kanal = None
     dur = threading.Event()
     izleyici = None
     if args.ebeveyn is not None:
         izleyici = threading.Thread(target=ebeveyn_izle, args=(args.ebeveyn, dur), daemon=True)
         izleyici.start()
-    olcum_dizini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "olcumler")
-    csv_yolu = os.path.join(olcum_dizini, time.strftime("oyun_%Y%m%d_%H%M%S.csv"))
-    kayit = None
-    csv_yazici = None
+    kamera = soket = kanal = komutcu = None
+    bekleyen = queue.Queue()
+    kayit_durumu = {"kayit": None, "yazici": None, "son_flush": time.monotonic(), "uyari": False}
     try:
-        os.makedirs(olcum_dizini, exist_ok=True)
-        kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
-        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum"), restval="")
-        csv_yazici.writeheader()
-        print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
-    except OSError as e:
-        print(f"Ölçüm kaydı devre dışı: {e}", file=sys.stderr)
-        if kayit is not None:
-            kayit.close()
-        kayit = csv_yazici = None
-    kayit_durumu = {"kayit": kayit, "yazici": csv_yazici, "son_flush": time.monotonic(), "uyari": False}
-    try:
-        dongu(kamera, secenek, aci, soket, kayit_durumu, bool(args.onizleme), kanal, dur)
+        kanal = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            kanal.bind(("127.0.0.1", 5066))
+            kanal.settimeout(0.1)
+        except OSError as e:
+            kanal.close()
+            kanal = None
+            if args.ebeveyn is not None:
+                print("Komut portu 5066 kullanımda (başka bir köprü açık olabilir)", file=sys.stderr)
+                raise SystemExit(2)
+            print(f"Komut portu 5066 açılamadı, komutsuz devam ediliyor: {e}", file=sys.stderr)
+        if kanal is not None:
+            komutcu = threading.Thread(target=komut_izle, args=(kanal, bekleyen, dur), daemon=True)
+            komutcu.start()
+        kamera = kamera_ac(kaynak, dur, SonKare)
+        if kamera is None:
+            return
+        soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        olcum_dizini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "olcumler")
+        csv_yolu = os.path.join(olcum_dizini, time.strftime("oyun_%Y%m%d_%H%M%S.csv"))
+        try:
+            os.makedirs(olcum_dizini, exist_ok=True)
+            kayit_durumu["kayit"] = open(csv_yolu, "w", newline="", encoding="utf-8")
+            kayit_durumu["yazici"] = csv.DictWriter(kayit_durumu["kayit"], fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum"), restval="")
+            kayit_durumu["yazici"].writeheader()
+            print(f"Ölçüm kaydı: {csv_yolu}")
+        except OSError as e:
+            print(f"Ölçüm kaydı devre dışı: {e}", file=sys.stderr)
+            if kayit_durumu["kayit"] is not None:
+                kayit_durumu["kayit"].close()
+            kayit_durumu["kayit"] = kayit_durumu["yazici"] = None
+        dongu(kamera, secenek, aci, soket, kayit_durumu, bool(args.onizleme), bekleyen, dur)
     finally:
         dur.set()
         if izleyici is not None:
             izleyici.join(timeout=1.1)
         if kanal is not None:
             kanal.close()
-        gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu, {"saat": round(time.time(), 3)})  # oyun son eğimde takılı kalmasın
+        if komutcu is not None:
+            komutcu.join(timeout=0.2)
+        if soket is not None:
+            gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu, {"saat": round(time.time(), 3)})  # oyun son eğimde takılı kalmasın
         if kayit_durumu["kayit"] is not None:
             try:
                 kayit_durumu["kayit"].close()
             except OSError as e:  # kapanış kalan tamponu yazar; disk hatası kamerayı açık bırakmasın
                 print(f"Ölçüm kaydı kapatılamadı: {e}", file=sys.stderr)
-        kamera.kapat()
-        soket.close()
-        if args.onizleme:
-            cv2.destroyAllWindows()
+        if kamera is not None:
+            kamera.kapat()
+        if soket is not None:
+            soket.close()
+        cv2.destroyAllWindows()
 
 
 def gonder(soket, mesaj, kayit_durumu=None, ek=None):
@@ -408,7 +477,7 @@ def sinyal_yok(simdi, kalibre=False, donuk=False):
             "durum": "donuk" if donuk else "kisi_yok"}
 
 
-def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, kanal=None, dur=None):
+def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleyen=None, dur=None):
     dur = dur if dur is not None else threading.Event()
     son_no, son_ts = 0, 0
     kal = Kalibrasyon()
@@ -418,9 +487,15 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, kanal=N
 
     with vision.PoseLandmarker.create_from_options(secenek) as model:
         while not dur.is_set():
-            komutlari_oku(kanal, kal, isleyici, dur)
+            onceki_aci, onceki_onizleme = aci, onizleme
+            aci, onizleme = komutlari_oku(bekleyen, kal, isleyici, dur, aci, onizleme)
+            if (aci, onizleme) != (onceki_aci, onceki_onizleme):
+                uyari_gosterildi = False
             if dur.is_set():
                 return
+            if not kamera.calisiyor:
+                print(f"Kamera akışı kesildi: {kamera.hata or 'Okuma iş parçacığı sonlandı.'}", file=sys.stderr)
+                raise SystemExit(2)
             no, kare, kare_zamani = kamera.al()
             if kare is None or no == son_no:
                 simdi = time.monotonic()

@@ -37,7 +37,7 @@ public class AnaMenu : MonoBehaviour
 
     void Awake()
     {
-        atlandi = KopruYonetici.TestModu;
+        atlandi = KopruYonetici.MenuAtlanir;
         if (atlandi) { motor.BaslamaIzni = true; enabled = false; return; }
         motor.BaslamaIzni = false;
     }
@@ -173,7 +173,7 @@ public class AnaMenu : MonoBehaviour
 
     void KameraSec(bool secim) { telefon = secim; KameraUygula(); }
 
-    void KameraYenidenDene() { kopru.Durdur(); KameraUygula(); }
+    void KameraYenidenDene() { KameraUygula(); if (KaynakOku(out _)) kopru.YenidenDene(); }
 
     bool KaynakOku(out string kaynak)
     {
@@ -265,7 +265,7 @@ public class AnaMenu : MonoBehaviour
         durum.text = DurumYazisi();
         bool hazir = alici.Bagli && alici.Durum == "hazir";
         nokta.color = kopru.Hata != null || !kopru.KurulumTamam ? new Color(1f, .35f, .3f) : hazir ? new Color(.35f, .9f, .6f) : vurgu;
-        basla.interactable = kopru.KurulumTamam && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
+        basla.interactable = kopru.KurulumTamam && kopru.Hazir && KaynakOku(out _) && kopru.Hata == null && alici.PortHatasi == null;
         if (ekran == Ekran.Yerles)
         {
             aciklama.text = "Yerine geç: kameradan 2-3 m uzakta,\nomuzların ve kalçaların görünsün";
@@ -288,12 +288,14 @@ public class AnaMenu : MonoBehaviour
 
     string DurumYazisi()
     {
+        if (KopruYonetici.MenuTestModu) return "Test modu: köprü kapalı";
+        if (kopru.YenidenBaglaniyor) return "Kamera yeniden bağlanıyor…";
+        if (kopru.Hata != null) return kopru.Hata;
         if (kopru.KopruKlasoru == null) return "Köprü klasörü bulunamadı. Oyunu köprüyle birlikte yerleştir veya -kopru <yol> kullan.";
         if (!kopru.KurulumTamam) return "Kurulum gerekli: " + System.IO.Path.Combine(kopru.KopruKlasoru, "kurulum.bat") + " dosyasını çalıştır";
         if (!KaynakOku(out _)) return "Telefon adresini IP:port olarak yaz (ör. 192.168.1.144:4747).";
         if (alici.PortHatasi != null) return alici.PortHatasi;
-        if (kopru.Hata != null) return kopru.Hata;
-        string ek = kopru.Harici ? " · harici köprü (kamera ayarları dışarıdan yönetiliyor)" : "";
+        string ek = kopru.Harici ? " · harici köprü" : "";
         if (!alici.Bagli) return (kopru.Baslatiliyor ? "Köprü başlıyor…" : "Kameradan mesaj bekleniyor…") + ek;
         switch (alici.Durum)
         {
@@ -308,7 +310,7 @@ public class AnaMenu : MonoBehaviour
 
     void Baslat()
     {
-        if (!kopru.KurulumTamam || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
+        if (!kopru.KurulumTamam || !kopru.Hazir || kopru.Hata != null || alici.PortHatasi != null || !KaynakOku(out _))
         { AnaMenuyeDon(); return; }
         motor.BaslamaIzni = false;
         Goster(Ekran.Yerles);

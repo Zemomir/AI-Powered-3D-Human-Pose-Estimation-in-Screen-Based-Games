@@ -113,6 +113,8 @@ public class Arayuz : MonoBehaviour
 
     string DurumMesaji()
     {
+        if (motor.kopru != null && motor.kopru.Hata != null)
+            return "Kamera köprüsü kapandı: Esc → Ana menü";
         if (alici == null) return "Kamera bağlı değil\nhareket_yayini.py çalışıyor mu?";
         if (alici.PortHatasi != null && !alici.KlavyeModu) return alici.PortHatasi;
         if (!alici.Bagli) return "Kamera bağlı değil\nhareket_yayini.py çalışıyor mu?";

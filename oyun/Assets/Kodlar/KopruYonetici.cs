@@ -6,6 +6,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 // Yalnız kendi başlattığımız sürecin yaşam döngüsünü yönetiriz.
 public class KopruYonetici : MonoBehaviour
@@ -16,24 +19,40 @@ public class KopruYonetici : MonoBehaviour
     public bool KurulumTamam => PythonYolu != null && File.Exists(PythonYolu);
     public bool Harici { get; private set; }
     public string Hata { get; private set; }
-    public bool Baslatiliyor => baslatBekliyor || (surec != null && !mesajGeldi);
+    public bool Baslatiliyor => baslatBekliyor || kapananSurec != null || (surec != null && !mesajGeldi);
+    public bool YenidenBaglaniyor => isteniyor && yenidenBaglaniyor;
+    public bool Hazir => !TestModu && !Baslatiliyor && alici != null && alici.SonMesajYasi < 1f &&
+        (Harici || (surec != null && !surec.HasExited && mesajGeldi));
     public string[] SonSatirlar { get { lock (kilit) return satirlar.ToArray(); } }
 
-    Process surec;
+    Process surec, kapananSurec;
     readonly object kilit = new object();
     readonly Queue<string> satirlar = new Queue<string>();
     string sonStderr, kaynak = "0";
     int aci;
-    bool onizleme, baslatBekliyor, mesajGeldi;
-    float baslatZamani, acilisZamani;
-    float sonDurdurmaZamani = -10f;
+    bool onizleme, baslatBekliyor, mesajGeldi, isteniyor, yenidenBaglaniyor;
+    volatile bool stdoutBitti, stderrBitti;
+    int baslangicMesajNo;
+    float baslatZamani, acilisZamani, sonrakiKontrol, oldurZamani, sonrakiAyar;
+    float yenidenBaglanmaBeklemesi = 1.2f;
+    float sonDurdurmaZamani = -100f;
 
     public static bool TestModu
     {
         get
         {
             var a = Environment.GetCommandLineArgs();
-            return Array.IndexOf(a, "-otopilot") >= 0 || Array.IndexOf(a, "-ekran") >= 0;
+            return Array.IndexOf(a, "-otopilot") >= 0 || Array.IndexOf(a, "-ekran") >= 0 || Array.IndexOf(a, "-ekranMenu") >= 0;
+        }
+    }
+
+    public static bool MenuTestModu => Array.IndexOf(Environment.GetCommandLineArgs(), "-ekranMenu") >= 0;
+    public static bool MenuAtlanir
+    {
+        get
+        {
+            var a = Environment.GetCommandLineArgs();
+            return Array.IndexOf(a, "-otopilot") >= 0 || (Array.IndexOf(a, "-ekran") >= 0 && !MenuTestModu);
         }
     }
 
@@ -64,45 +83,135 @@ public class KopruYonetici : MonoBehaviour
         if (TestModu) enabled = false;
     }
 
+    void OnEnable()
+    {
+#if UNITY_EDITOR
+        AssemblyReloadEvents.beforeAssemblyReload += Durdur;
+#endif
+    }
+
+    void OnDisable()
+    {
+#if UNITY_EDITOR
+        AssemblyReloadEvents.beforeAssemblyReload -= Durdur;
+#endif
+        Durdur();
+        KapanisiTamamla();
+    }
+
     public void KameraAyarla(string yeniKaynak, int yeniAci, bool yeniOnizleme)
     {
         if (TestModu) return;
-        if (surec != null && !surec.HasExited && kaynak == yeniKaynak && aci == yeniAci && onizleme == yeniOnizleme) return;
+        bool kaynakDegisti = kaynak != yeniKaynak;
+        bool aciDegisti = aci != yeniAci, onizlemeDegisti = onizleme != yeniOnizleme;
+        if (kaynakDegisti)
+        {
+            // DroidCam kapanmış bağlantıyı 10–15 sn meşgul tutabilir.
+            YenidenBaglanmaSuresiniAyarla();
+            Durdur();
+        }
         kaynak = yeniKaynak; aci = yeniAci; onizleme = yeniOnizleme;
-        Durdur();
-        Hata = null;
-        Harici = false;
+        if (isteniyor && !kaynakDegisti)
+        {
+            if (Harici || (surec != null && !surec.HasExited))
+            {
+                if (aciDegisti) Komut("aci", aci);
+                if (onizlemeDegisti) Komut("onizleme", onizleme ? 1 : 0);
+            }
+            return;
+        }
+        isteniyor = true;
         // Alıcının elle açılmış bir köprüden en az bir mesaj görmesine zaman tanı.
-        baslatZamani = Mathf.Max(Time.realtimeSinceStartup + .4f, acilisZamani + 1.2f, sonDurdurmaZamani + 1.2f);
+        baslatZamani = Mathf.Max(Time.realtimeSinceStartup + .4f, acilisZamani + 1.2f, sonDurdurmaZamani + yenidenBaglanmaBeklemesi);
+        yenidenBaglaniyor |= sonDurdurmaZamani + yenidenBaglanmaBeklemesi > Time.realtimeSinceStartup;
         baslatBekliyor = true;
+    }
+
+    void YenidenBaglanmaSuresiniAyarla()
+    {
+        float bekleme = kaynak.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? 15f : 1.2f;
+        // Art arda tıklamalar, hâlâ kapanmakta olan gerçek kaynağın beklemesini kısaltmasın.
+        yenidenBaglanmaBeklemesi = yenidenBaglaniyor ||
+            Time.realtimeSinceStartup < sonDurdurmaZamani + yenidenBaglanmaBeklemesi ?
+            Mathf.Max(yenidenBaglanmaBeklemesi, bekleme) : bekleme;
+    }
+
+    public void YenidenDene()
+    {
+        if (TestModu || Harici) return;
+        YenidenBaglanmaSuresiniAyarla();
+        Durdur();
+        isteniyor = true;
+        baslatBekliyor = true;
+        baslatZamani = Mathf.Max(Time.realtimeSinceStartup + .4f, sonDurdurmaZamani + yenidenBaglanmaBeklemesi);
+        yenidenBaglaniyor |= sonDurdurmaZamani + yenidenBaglanmaBeklemesi > Time.realtimeSinceStartup;
     }
 
     void Update()
     {
         if (TestModu) return;
+        if (kapananSurec != null)
+        {
+            if (kapananSurec.HasExited)
+            {
+                kapananSurec.Dispose(); kapananSurec = null;
+                sonDurdurmaZamani = Time.realtimeSinceStartup;
+                baslatZamani = Mathf.Max(baslatZamani, sonDurdurmaZamani + yenidenBaglanmaBeklemesi);
+            }
+            else if (Time.realtimeSinceStartup >= oldurZamani)
+            {
+                try { kapananSurec.Kill(); }
+                catch (InvalidOperationException) { }
+                catch (System.ComponentModel.Win32Exception e) { UnityEngine.Debug.LogWarning("Köprü kapatılamadı: " + e.Message); }
+                oldurZamani = Time.realtimeSinceStartup + 1f;
+            }
+            return; // Eski süreç tamamen kapanmadan yenisi açılmaz.
+        }
         if (surec != null)
         {
-            if (alici != null && alici.SonMesajYasi < 1f) mesajGeldi = true;
-            if (surec.HasExited)
+            if (!surec.HasExited && !mesajGeldi && Time.realtimeSinceStartup >= sonrakiAyar)
             {
-                surec.WaitForExit(); // Asenkron çıktı okuyucularının son satırı tamamlaması.
+                // İlk komut import/açılış sırasında port bağlanmadan gönderilmiş olabilir.
+                Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
+                sonrakiAyar = Time.realtimeSinceStartup + .5f;
+            }
+            if (!surec.HasExited && alici != null && alici.SonMesajNo > baslangicMesajNo && alici.SonMesajYasi < 1f)
+            { mesajGeldi = true; Hata = null; yenidenBaglaniyor = false; }
+            if (surec.HasExited && stdoutBitti && stderrBitti)
+            {
                 string sebep;
                 lock (kilit) sebep = sonStderr;
                 if (sebep != null && sebep.StartsWith("Kamera açılamadı: ", StringComparison.Ordinal))
                     sebep = sebep.Substring("Kamera açılamadı: ".Length);
-                Hata = "Kamera açılamadı: " + (string.IsNullOrEmpty(sebep) ? "Köprü beklenmedik biçimde kapandı" : sebep) +
-                    $" (çıkış kodu {surec.ExitCode})";
+                int kod = surec.ExitCode;
+                Hata = kod == 0 ? "Köprü kapatıldı" :
+                    kod == 1 && sebep != null && (sebep.Contains("ModuleNotFoundError") || sebep.Contains("ImportError")) ?
+                    "Kurulum eksik: kurulum.bat'ı yeniden çalıştır" :
+                    (kod == 2 ? "Kamera açılamadı: " : $"Köprü kapandı (kod {kod}): ") +
+                    (string.IsNullOrEmpty(sebep) ? "Sebep bildirilmedi" : sebep);
                 surec.Dispose(); surec = null;
+                YenidenBaglanmaSuresiniAyarla();
+                sonDurdurmaZamani = Time.realtimeSinceStartup;
+                yenidenBaglaniyor = false;
             }
+        }
+        if (Harici && (alici == null || alici.SonMesajYasi > 2f)) Harici = false;
+        if (isteniyor && surec == null && Hata == null && !Harici && !baslatBekliyor && Time.realtimeSinceStartup >= sonrakiKontrol)
+        {
+            baslatBekliyor = true;
+            baslatZamani = Mathf.Max(baslatZamani, Time.realtimeSinceStartup);
         }
         if (!baslatBekliyor || Time.realtimeSinceStartup < baslatZamani) return;
         baslatBekliyor = false;
-        if (alici != null && alici.SonMesajYasi < 1f)
+        sonrakiKontrol = Time.realtimeSinceStartup + 1f;
+        if (!yenidenBaglaniyor && alici != null && alici.SonMesajYasi < 1f)
         {
             Harici = true;
+            Hata = null;
+            Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
             return;
         }
-        if (!KurulumTamam) return;
+        if (surec != null || !KurulumTamam) return;
         if (alici != null && alici.PortHatasi != null) { Hata = alici.PortHatasi; return; }
         try
         {
@@ -118,22 +227,29 @@ public class KopruYonetici : MonoBehaviour
             };
             bilgi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
             bilgi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+            stdoutBitti = stderrBitti = false;
             surec = new Process { StartInfo = bilgi };
-            surec.OutputDataReceived += (_, e) => SatirEkle(e.Data, false);
-            surec.ErrorDataReceived += (_, e) => SatirEkle(e.Data, true);
+            var baslayan = surec;
+            surec.OutputDataReceived += (_, e) => SatirEkle(baslayan, e.Data, false);
+            surec.ErrorDataReceived += (_, e) => SatirEkle(baslayan, e.Data, true);
             surec.Start();
+            baslangicMesajNo = alici != null ? alici.SonMesajNo : 0;
             surec.BeginOutputReadLine(); surec.BeginErrorReadLine();
             mesajGeldi = false;
+            // Açılış sırasında değişmiş ayarlar da yeni komut dinleyicisine ulaşsın.
+            Komut("aci", aci); Komut("onizleme", onizleme ? 1 : 0);
         }
         catch (Exception e)
         {
-            Hata = "Kamera açılamadı: " + e.Message;
+            Hata = "Köprü başlatılamadı: " + e.Message;
             Durdur();
         }
     }
 
-    void SatirEkle(string satir, bool hata)
+    void SatirEkle(Process sahibi, string satir, bool hata)
     {
+        if (sahibi != surec) return;
+        if (satir == null) { if (hata) stderrBitti = true; else stdoutBitti = true; return; }
         if (string.IsNullOrWhiteSpace(satir)) return;
         lock (kilit)
         {
@@ -162,13 +278,14 @@ public class KopruYonetici : MonoBehaviour
 
     public void KalibreEt() { if (!TestModu) Komut("kalibre"); }
 
-    static void Komut(string komut)
+    static void Komut(string komut, int? deger = null)
     {
         try
         {
             using (var udp = new UdpClient())
             {
-                byte[] veri = Encoding.UTF8.GetBytes("{\"komut\":\"" + komut + "\"}");
+                byte[] veri = Encoding.UTF8.GetBytes("{\"komut\":\"" + komut + "\"" +
+                    (deger.HasValue ? ",\"deger\":" + deger.Value : "") + "}");
                 udp.Send(veri, veri.Length, new IPEndPoint(IPAddress.Loopback, 5066));
             }
         }
@@ -178,26 +295,37 @@ public class KopruYonetici : MonoBehaviour
     public void Durdur()
     {
         baslatBekliyor = false;
+        isteniyor = false;
+        Harici = false;
         if (surec == null) return; // Harici köprüyü kapatma.
+        kapananSurec = surec; surec = null;
+        yenidenBaglaniyor = true;
+        oldurZamani = Time.realtimeSinceStartup + 3.5f;
         try
         {
-            if (!surec.HasExited)
-            {
-                Komut("cik");
-                if (!surec.WaitForExit(1000)) surec.Kill();
-            }
-            surec.WaitForExit(1000);
+            if (!kapananSurec.HasExited) Komut("cik");
         }
-        catch (InvalidOperationException) { }
-        catch (System.ComponentModel.Win32Exception e) { UnityEngine.Debug.LogWarning("Köprü kapatılamadı: " + e.Message); }
-        finally
+        catch (InvalidOperationException)
         {
-            surec.Dispose(); surec = null;
-            // Kapanıştaki son UDP mesajı, yeniden başlatmada harici köprü sanılmasın.
-            sonDurdurmaZamani = Time.realtimeSinceStartup;
+            kapananSurec.Dispose(); kapananSurec = null;
+            yenidenBaglaniyor = false;
         }
     }
 
-    void OnApplicationQuit() { Durdur(); }
-    void OnDestroy() { Durdur(); }
+    // Yalnız kapanış/domain yenilemesi: menü tıklaması buraya girmez.
+    void KapanisiTamamla()
+    {
+        if (kapananSurec == null) return;
+        try
+        {
+            if (!kapananSurec.WaitForExit(250)) kapananSurec.Kill();
+            kapananSurec.WaitForExit(250);
+        }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception e) { UnityEngine.Debug.LogWarning("Köprü kapatılamadı: " + e.Message); }
+        finally { kapananSurec.Dispose(); kapananSurec = null; }
+    }
+
+    void OnApplicationQuit() { Durdur(); KapanisiTamamla(); }
+    void OnDestroy() { Durdur(); KapanisiTamamla(); }
 }

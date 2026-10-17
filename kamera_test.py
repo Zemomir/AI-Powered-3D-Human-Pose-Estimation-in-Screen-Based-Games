@@ -58,6 +58,7 @@ class SonKare:
         self.no = 0
         self.zaman = time.monotonic()  # son karenin geldiği an; donmuş akışı görünür kılmak için
         self.kilit = threading.Lock()
+        self.hata = None
         self.calisiyor = True
         self.is_parcacigi = threading.Thread(target=self._oku, daemon=True)
         self.is_parcacigi.start()
@@ -69,15 +70,21 @@ class SonKare:
             while self.calisiyor:
                 ok, kare = self.cap.read()
                 if not ok:
-                    print("Kameradan kare gelmedi, bağlantı koptu.", file=sys.stderr)
+                    self.hata = "Kameradan kare gelmedi, bağlantı koptu."
                     return
                 with self.kilit:
                     self.kare = kare
                     self.no += 1
                     self.zaman = time.monotonic()
+        except Exception as e:
+            self.hata = str(e)
         finally:
-            self.calisiyor = False
-            self.cap.release()
+            try:
+                self.cap.release()
+            except Exception as e:
+                self.hata = self.hata or str(e)
+            finally:
+                self.calisiyor = False
 
     def al(self):
         with self.kilit:
@@ -141,7 +148,7 @@ def tus(aci):
         return None
     if t == ord("r"):
         aci = (aci + 90) % 360
-        print(f"Döndürme: {aci} (sonraki sefer komutun sonuna {aci} yaz)", file=sys.stderr)
+        print(f"Döndürme: {aci} (sonraki sefer komutun sonuna {aci} yaz)")
     return aci
 
 
@@ -204,6 +211,10 @@ def calistir(kamera, secenek, aci):
             aci = tus(aci)
             if aci is None:
                 break
+
+    if not kamera.calisiyor:
+        print(f"Kamera akışı kesildi: {kamera.hata or 'Okuma iş parçacığı sonlandı.'}", file=sys.stderr)
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
