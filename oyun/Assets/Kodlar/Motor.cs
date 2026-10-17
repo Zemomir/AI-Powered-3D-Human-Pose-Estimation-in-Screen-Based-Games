@@ -33,6 +33,12 @@ public class Motor : MonoBehaviour
     public const float VARSAYILAN_HIZ_HASSASIYETI = 0.9f;
     const string HASSASIYET_ANAHTARI = "HizHassasiyeti";
     public float HizHassasiyeti { get; private set; }
+    // 2026-10-17 ikinci denemede Batın dönüşü biraz fazla hassas buldu.
+    public const float VARSAYILAN_DONUS_HASSASIYETI = 0.8f;
+    const string DONUS_HASSASIYETI_ANAHTARI = "DonusHassasiyeti";
+    public float DonusHassasiyeti { get; private set; }
+    // Batın gecikmesiz denemek istedi; PlayerPrefs'e yazılmaz.
+    public bool YumusatmaAcik { get; private set; } = false;
     public float enAzHiz = 3f, enCokHiz = 15f;
     public float yolDisiHiz = 4f;        // yoldan çıkınca (çim) üst sınır
     public float ivme = 6f;              // m/sn²
@@ -54,6 +60,9 @@ public class Motor : MonoBehaviour
         float kayitli = PlayerPrefs.GetFloat(HASSASIYET_ANAHTARI, VARSAYILAN_HIZ_HASSASIYETI);
         if (!float.IsFinite(kayitli)) kayitli = VARSAYILAN_HIZ_HASSASIYETI;  // Clamp NaN'ı süzmez
         HizHassasiyeti = Mathf.Clamp(kayitli, 0.3f, 2f);
+        float kayitliDonus = PlayerPrefs.GetFloat(DONUS_HASSASIYETI_ANAHTARI, VARSAYILAN_DONUS_HASSASIYETI);
+        if (!float.IsFinite(kayitliDonus)) kayitliDonus = VARSAYILAN_DONUS_HASSASIYETI;
+        DonusHassasiyeti = Mathf.Clamp(kayitliDonus, 0.3f, 2f);
         Sifirla();
     }
 
@@ -67,10 +76,26 @@ public class Motor : MonoBehaviour
             else if (c == '-') yeni -= 0.1f;
         }
         yeni = Mathf.Clamp(Mathf.Round(yeni * 10f) / 10f, 0.3f, 2f);
-        if (yeni == HizHassasiyeti) return;
-        HizHassasiyeti = yeni;
-        PlayerPrefs.SetFloat(HASSASIYET_ANAHTARI, yeni);
-        PlayerPrefs.Save();
+        if (yeni != HizHassasiyeti)  // erken return yok: aşağıdaki dönüş ayarı da her karede işlensin
+        {
+            HizHassasiyeti = yeni;
+            PlayerPrefs.SetFloat(HASSASIYET_ANAHTARI, yeni);
+            PlayerPrefs.Save();
+        }
+
+        float yeniDonus = DonusHassasiyeti;
+        foreach (char c in Input.inputString)
+        {
+            if (c == '2') yeniDonus += 0.1f;
+            else if (c == '1') yeniDonus -= 0.1f;
+        }
+        yeniDonus = Mathf.Clamp(Mathf.Round(yeniDonus * 10f) / 10f, 0.3f, 2f);
+        if (yeniDonus != DonusHassasiyeti)
+        {
+            DonusHassasiyeti = yeniDonus;
+            PlayerPrefs.SetFloat(DONUS_HASSASIYETI_ANAHTARI, yeniDonus);
+            PlayerPrefs.Save();
+        }
     }
 
     public void Sifirla()
@@ -86,6 +111,7 @@ public class Motor : MonoBehaviour
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.R)) Sifirla();
+        if (Input.GetKeyDown(KeyCode.Y)) YumusatmaAcik = !YumusatmaAcik;
         HassasiyetTuslari();
         if (Hal == Durum.Bitti) { Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime); Ilerlet(0); return; }
 
@@ -106,14 +132,18 @@ public class Motor : MonoBehaviour
         Sure += Time.deltaTime;
 
         float e = OluBolge(egim.Value, egimOluBolge);
-        float donus = Mathf.Clamp(e * donusKatsayisi, -azamiDonus, azamiDonus);
+        float donus = Mathf.Clamp(e * donusKatsayisi * DonusHassasiyeti, -azamiDonus, azamiDonus);
 
         float hedef = tabanHiz;
         if (one.HasValue)
         {
             // Kare hızından bağımsız üstel yumuşatma.
-            float a = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(oneYumusatmaSn, 0.001f));
-            duzOne = duzOne.HasValue ? Mathf.Lerp(duzOne.Value, one.Value, a) : one.Value;
+            if (YumusatmaAcik)
+            {
+                float a = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(oneYumusatmaSn, 0.001f));
+                duzOne = duzOne.HasValue ? Mathf.Lerp(duzOne.Value, one.Value, a) : one.Value;
+            }
+            else duzOne = one.Value;
             oneYokSure = 0;
         }
         else if ((oneYokSure += Time.unscaledDeltaTime) > HareketAlici.ZAMAN_ASIMI_SN) duzOne = null;

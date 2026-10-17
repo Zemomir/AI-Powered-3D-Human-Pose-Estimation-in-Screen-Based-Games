@@ -1,4 +1,5 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
+Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
 Her karede 127.0.0.1:5065'e tek satırlık JSON gider:
     {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031}
@@ -19,7 +20,9 @@ Tuşlar: c yeniden kalibre, q / Esc çıkış.
 """
 
 import json
+import csv
 import math
+import os
 import socket
 import sys
 import time
@@ -106,27 +109,63 @@ def main():
     )
     soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     kamera = SonKare(kaynak)
+    olcum_dizini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "olcumler")
+    csv_yolu = os.path.join(olcum_dizini, time.strftime("oyun_%Y%m%d_%H%M%S.csv"))
+    kayit = None
+    csv_yazici = None
     try:
-        dongu(kamera, secenek, aci, soket)
+        os.makedirs(olcum_dizini, exist_ok=True)
+        kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
+        csv_yazici = csv.DictWriter(kayit, fieldnames=("t", "kalibre", "egim", "one", "donuk"))
+        csv_yazici.writeheader()
+        print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
+    except OSError as e:
+        print(f"Ölçüm kaydı devre dışı: {e}", file=sys.stderr)
+        if kayit is not None:
+            kayit.close()
+        kayit = csv_yazici = None
+    kayit_durumu = {"kayit": kayit, "yazici": csv_yazici, "son_flush": time.monotonic(), "uyari": False}
+    try:
+        dongu(kamera, secenek, aci, soket, kayit_durumu)
     finally:
-        gonder(soket, sinyal_yok(time.monotonic()))  # oyun son eğimde takılı kalmasın
+        gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu)  # oyun son eğimde takılı kalmasın
+        if kayit_durumu["kayit"] is not None:
+            try:
+                kayit_durumu["kayit"].close()
+            except OSError as e:  # kapanış kalan tamponu yazar; disk hatası kamerayı açık bırakmasın
+                print(f"Ölçüm kaydı kapatılamadı: {e}", file=sys.stderr)
         kamera.kapat()
         soket.close()
         cv2.destroyAllWindows()
 
 
-def gonder(soket, mesaj):
+def gonder(soket, mesaj, kayit_durumu=None):
     try:
         soket.sendto(json.dumps(mesaj).encode(), HEDEF)
     except OSError:
         pass  # oyun kapalıyken Windows ICMP "port unreachable" hatası verebilir; kamera tarafı durmasın
+    if kayit_durumu is not None and kayit_durumu["yazici"] is not None:
+        try:
+            kayit_durumu["yazici"].writerow(mesaj)
+            if time.monotonic() - kayit_durumu["son_flush"] >= 1.0:
+                kayit_durumu["kayit"].flush()
+                kayit_durumu["son_flush"] = time.monotonic()
+        except OSError as e:
+            if not kayit_durumu["uyari"]:
+                print(f"Ölçüm kaydı durduruldu: {e}", file=sys.stderr)
+                kayit_durumu["uyari"] = True
+            try:
+                kayit_durumu["kayit"].close()
+            except OSError:
+                pass
+            kayit_durumu["kayit"] = kayit_durumu["yazici"] = None
 
 
 def sinyal_yok(simdi, kalibre=False, donuk=False):
     return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk}
 
 
-def dongu(kamera, secenek, aci, soket):
+def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
     son_no, son_ts = 0, 0
     kal = Kalibrasyon()
     duz_egim = duz_one = None
@@ -140,7 +179,7 @@ def dongu(kamera, secenek, aci, soket):
                 simdi = time.monotonic()
                 if simdi - kare_zamani > DONUK_ESIK_SN and simdi - son_sessiz >= SESSIZ_ARALIK_SN:
                     # Akış dondu: susmak oyunu son değerde bırakır, açıkça "sinyal yok" de.
-                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True))
+                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu)
                     son_sessiz = simdi
                     duz_egim = duz_one = None
                 if simdi - kare_zamani > DONMA_SANIYE:
@@ -189,7 +228,7 @@ def dongu(kamera, secenek, aci, soket):
             else:
                 # Sinyal kopunca eski değer yumuşatmada sürüklenmesin.
                 duz_egim = duz_one = None
-            gonder(soket, mesaj)
+            gonder(soket, mesaj, kayit_durumu)
 
             if not kal.tamam:
                 durum = f"KALIBRASYON: dik otur  {kal.kalan(simdi):.0f}" if egim is not None else "KALIBRASYON: omuzlar gorunsun"
