@@ -166,9 +166,8 @@ public static class SahneKur
         PlayerSettings.companyName = "FizyoOyun";
         // Python penceresi öndeyken oyun durmasın: kamera ile oyun aynı anda çalışıyor.
         PlayerSettings.runInBackground = true;
-        PlayerSettings.fullScreenMode = FullScreenMode.Windowed;
-        PlayerSettings.defaultScreenWidth = 1280;
-        PlayerSettings.defaultScreenHeight = 720;
+        PlayerSettings.fullScreenMode = FullScreenMode.FullScreenWindow;
+        PlayerSettings.defaultIsNativeResolution = true;
         PlayerSettings.resizableWindow = true;
         AssetDatabase.SaveAssets();
         Debug.Log("SahneKur: sahne kuruldu -> " + SAHNE);
