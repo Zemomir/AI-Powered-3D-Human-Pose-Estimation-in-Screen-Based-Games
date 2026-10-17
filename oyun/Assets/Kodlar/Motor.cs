@@ -17,6 +17,15 @@ public class Motor : MonoBehaviour
     [Header("Hız")]
     public float tabanHiz = 8f;          // m/sn, dik otururken
     public float oneOluBolge = 0.015f;   // metre; 2026-10-17 ölçümünde 20° eğilme ~4 cm verdi
+    // Yana eğilirken "öne" sinyali kayıyor (2026-10-17 yan ölçümü: sağa ~11° → ~1 cm, sola ~0,4 cm,
+    // titreşim de artıyor). Kayma hep öne doğru olduğu için yalnız ÖNE tarafın ölü bölgesi yan eğimle
+    // genişler (10° yana → 1,5 + 1 = 2,5 cm); geriye eğilip yavaşlamak dönerken de aynı kalır.
+    // Üst sınır: keskin virajda da öne eğilmek hız verebilsin (tam öne eğilme ~4 cm).
+    public float yanEgimOluBolgeEki = 0.001f;  // metre / derece
+    public float azamiOneOluBolge = 0.03f;     // metre
+    // Öne sinyali ayrıca yumuşatılır (zaman sabiti, sn): kare kare oynama hıza geçmesin.
+    // Büyütmek titremeyi azaltır ama hız öne eğilmeye geç tepki verir.
+    public float oneYumusatmaSn = 0.25f;
     public float hizKatsayisi = 150f;    // (m/sn) / metre: +4 cm → yaklaşık +4 m/sn (%100 hassasiyette)
     // Hassasiyet öne/geri ekseninin tamamına uygulanır (geriye eğilip yavaşlamaya da), tek eksen tek ayar.
     // Oyun içinden +/- ile %10 adımla değişir, kapatınca hatırlanır (fizyoterapist çocuğa göre ayarlasın).
@@ -37,6 +46,8 @@ public class Motor : MonoBehaviour
 
     int yolIndeksi;
     float gorselYatma;
+    float? duzOne;  // yumuşatılmış öne sinyali; sinyal kopunca sıfırlanır, eski değer geri gelmesin
+    float oneYokSure;  // kalça bir an görünmeyince yumuşatma baştan başlamasın, ancak uzun kesintide
 
     void Start()
     {
@@ -67,7 +78,7 @@ public class Motor : MonoBehaviour
         yolIndeksi = yol.BaslangicIndeksi;
         transform.position = yol.Noktalar[yolIndeksi];
         transform.rotation = Quaternion.LookRotation(yol.Yon(yolIndeksi));
-        Hiz = 0; Sure = 0; gorselYatma = 0;
+        Hiz = 0; Sure = 0; gorselYatma = 0; duzOne = null; oneYokSure = 0;
         if (govde != null) govde.localRotation = Quaternion.identity;
         Hal = Durum.Bekliyor;
     }
@@ -88,6 +99,7 @@ public class Motor : MonoBehaviour
             Hiz = Mathf.MoveTowards(Hiz, 0, ivme * 2 * Time.deltaTime);
             Ilerlet(0);
             Yatir(0);
+            duzOne = null; oneYokSure = 0;
             return;
         }
         Hal = Durum.Suruyor;
@@ -97,7 +109,22 @@ public class Motor : MonoBehaviour
         float donus = Mathf.Clamp(e * donusKatsayisi, -azamiDonus, azamiDonus);
 
         float hedef = tabanHiz;
-        if (one.HasValue) hedef += OluBolge(one.Value, oneOluBolge) * hizKatsayisi * HizHassasiyeti;
+        if (one.HasValue)
+        {
+            // Kare hızından bağımsız üstel yumuşatma.
+            float a = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(oneYumusatmaSn, 0.001f));
+            duzOne = duzOne.HasValue ? Mathf.Lerp(duzOne.Value, one.Value, a) : one.Value;
+            oneYokSure = 0;
+        }
+        else if ((oneYokSure += Time.deltaTime) > HareketAlici.ZAMAN_ASIMI_SN) duzOne = null;
+
+        if (duzOne.HasValue)  // kısa kesintide son yumuşatılmış değer kullanılır, uzunda katkı yok
+        {
+            float oneEsik = Mathf.Min(oneOluBolge + yanEgimOluBolgeEki * Mathf.Abs(egim.Value), azamiOneOluBolge);
+            float x = duzOne.Value;
+            float katki = x > oneEsik ? x - oneEsik : (x < -oneOluBolge ? x + oneOluBolge : 0f);
+            hedef += katki * hizKatsayisi * HizHassasiyeti;
+        }
         hedef = Mathf.Clamp(hedef, enAzHiz, enCokHiz);
         if (YolDisinda) hedef = Mathf.Min(hedef, yolDisiHiz);
         Hiz = Mathf.MoveTowards(Hiz, hedef, ivme * Time.deltaTime);
