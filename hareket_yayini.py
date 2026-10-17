@@ -5,6 +5,7 @@ Her karede 127.0.0.1:5065'e tek satırlık JSON gider:
   egim : yan eğim, derece; + = kişi sağına eğik (nötr duruşa göre)
   one  : öne/geriye eğilme, metre; + = öne (omuz ortası kalçaya göre kameraya yaklaştı), nötre göre.
          2026-10-17 ölçümünde 20° civarı eğilme ~±4 cm verdi. Kalçalar görünmüyorsa null.
+  donuk: true ise telefondan kare gelmiyor (Python çalışıyor ama akış dondu).
   Kişi ya da omuzlar görünmüyorsa egim ve one null olur; oyun bunu "sinyal yok" diye ele almalı.
   Kamera donarsa her SESSIZ_ARALIK_SN'de null mesaj, çıkışta da son bir null mesaj gider. Yine de
   oyun ~0,5 sn mesaj almazsa kendisi "sinyal yok" saymalı (betik çökerse null gönderemez).
@@ -18,6 +19,7 @@ Tuşlar: c yeniden kalibre, q / Esc çıkış.
 """
 
 import json
+import math
 import socket
 import sys
 import time
@@ -34,6 +36,9 @@ HEDEF = ("127.0.0.1", 5065)
 KALIBRASYON_SN = 3.0
 YERLESME_SN = 1.0  # 2026-10-17 deneme 1: yerleşme payı olmayan kalibrasyon kirlendi
 SESSIZ_ARALIK_SN = 0.1
+# Oyun 0,5 sn mesaj almazsa "Python çalışmıyor" der; donma bundan önce bildirilsin ki
+# ekranda yanlış teşhis ("kamera bağlı değil") yanıp sönmesin.
+DONUK_ESIK_SN = 0.3
 YUMUSATMA = 0.5  # üstel ortalama: 1 = ham, küçüldükçe daha yumuşak ama daha gecikmeli
 PENCERE = "Fizyo-Oyun hareket yayini"
 
@@ -117,8 +122,8 @@ def gonder(soket, mesaj):
         pass  # oyun kapalıyken Windows ICMP "port unreachable" hatası verebilir; kamera tarafı durmasın
 
 
-def sinyal_yok(simdi, kalibre=False):
-    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None}
+def sinyal_yok(simdi, kalibre=False, donuk=False):
+    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk}
 
 
 def dongu(kamera, secenek, aci, soket):
@@ -133,12 +138,12 @@ def dongu(kamera, secenek, aci, soket):
             no, kare, kare_zamani = kamera.al()
             if kare is None or no == son_no:
                 simdi = time.monotonic()
-                if simdi - kare_zamani > DONMA_SANIYE:
+                if simdi - kare_zamani > DONUK_ESIK_SN and simdi - son_sessiz >= SESSIZ_ARALIK_SN:
                     # Akış dondu: susmak oyunu son değerde bırakır, açıkça "sinyal yok" de.
-                    if simdi - son_sessiz >= SESSIZ_ARALIK_SN:
-                        gonder(soket, sinyal_yok(simdi, kal.tamam))
-                        son_sessiz = simdi
-                        duz_egim = duz_one = None
+                    gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True))
+                    son_sessiz = simdi
+                    duz_egim = duz_one = None
+                if simdi - kare_zamani > DONMA_SANIYE:
                     if not uyari_gosterildi:
                         bos = np.zeros((480, 640, 3), np.uint8)
                         cv2.putText(bos, "KARE GELMIYOR", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
@@ -163,6 +168,11 @@ def dongu(kamera, secenek, aci, soket):
                 ciz(kare, sonuc.pose_landmarks[0])
 
             egim, dz = ham_olcum(sonuc, kare.shape[1], kare.shape[0])
+            # NaN/sonsuz değer oyuna gitmesin (JSON'da "NaN" olur, oyunda konumu bozar).
+            if egim is not None and not math.isfinite(egim):
+                egim, dz = None, None
+            if dz is not None and not math.isfinite(dz):
+                dz = None
             kal.besle(simdi, egim, dz)
 
             mesaj = sinyal_yok(simdi, kal.tamam)

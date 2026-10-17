@@ -2,3 +2,10 @@
 __pycache__/
 models/
 olcumler/
+oyun/[Ll]ibrary/
+oyun/[Tt]emp/
+oyun/[Oo]bj/
+oyun/[Ll]ogs/
+oyun/[Uu]ser[Ss]ettings/
+oyun_derleme/
+*.log
