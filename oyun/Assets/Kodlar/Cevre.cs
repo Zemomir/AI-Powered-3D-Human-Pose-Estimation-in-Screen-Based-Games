@@ -1,32 +1,41 @@
-using UnityEngine;
+﻿using UnityEngine;
 
-// Sadece başlangıçta kurulur; yolun bütün kıvrımlarına mesafe bırakır.
+// Sadece başlangıçta kurulur; bütün yol noktalarına mesafe bırakır.
 public class Cevre : MonoBehaviour
 {
     public Yol yol;
     public Material agacGovde, yaprak, kaya;
+    public Material[] yaprakTonlari;
+    CevreMesh birlesim;
+    Mesh silindir, kure, koni;
 
     void Start()
     {
         if (yol == null || yol.Noktalar == null || yol.Noktalar.Count < 2) return;
+        birlesim = gameObject.AddComponent<CevreMesh>();
+        silindir = CevreMesh.Ilkel(PrimitiveType.Cylinder);
+        kure = CevreMesh.Ilkel(PrimitiveType.Sphere);
+        koni = Koni();
         var rastgele = new System.Random(42);
-        Yerlestir(rastgele, 120, true);
-        Yerlestir(rastgele, 40, false);
+        Yerlestir(rastgele, 180, true);
+        Yerlestir(rastgele, 50, false);
+        birlesim.Bitir();
+        Destroy(koni);
     }
 
     void Yerlestir(System.Random r, int adet, bool agac)
     {
         if (agac ? agacGovde == null || yaprak == null : kaya == null) return;
+        var arazi = Terrain.activeTerrain;
         int konan = 0;
         for (int deneme = 0; deneme < adet * 100 && konan < adet; deneme++)
         {
             int i = r.Next(yol.Noktalar.Count);
             float taraf = r.Next(2) == 0 ? -1f : 1f;
+            float cap = agac ? Aralik(r, 3, 4.8f) : Aralik(r, 1.2f, 2.5f);
             Vector3 p = yol.Noktalar[i] + Vector3.Cross(Vector3.up, yol.Yon(i)).normalized *
-                (taraf * Aralik(r, 7f, 30f));
-            float cap = agac ? Aralik(r, 2.2f, 3.4f) : Aralik(r, 1.2f, 2.5f);
-            // Taç ve kaya kenarları da güvenli aralıkta kalsın.
-            float bosluk = yol.genislik / 2f + 3f + cap / 2f;
+                (taraf * (yol.genislik / 2 + Aralik(r, 7 + cap / 2, 60 - cap / 2)));
+            float bosluk = yol.genislik / 2 + 7 + cap / 2;
             bool uygun = true;
             foreach (Vector3 nokta in yol.Noktalar)
             {
@@ -34,37 +43,66 @@ public class Cevre : MonoBehaviour
                 if (fark.sqrMagnitude < bosluk * bosluk) { uygun = false; break; }
             }
             if (!uygun) continue;
+            p.y = arazi != null ? arazi.SampleHeight(p) + arazi.transform.position.y : 0;
             if (agac)
             {
-                float boy = Aralik(r, 2.6f, 3.8f);
-                Parca(PrimitiveType.Cylinder, "AgacGovde", p + Vector3.up * boy / 2,
-                    new Vector3(0.4f, boy / 2, 0.4f), agacGovde);
-                Parca(PrimitiveType.Sphere, "Tac", p + Vector3.up * boy,
-                    new Vector3(cap, cap * 0.9f, cap), yaprak);
+                float boy = Aralik(r, 4.5f, 7.5f);
+                var ton = yaprak;
+                if (yaprakTonlari != null && yaprakTonlari.Length > 0)
+                    ton = yaprakTonlari[r.Next(yaprakTonlari.Length)] ?? yaprak;
+                bool cam = r.Next(2) == 0;
+                float govdeBoy = cam ? boy * .72f : boy * .65f;
+                Ekle(silindir, agacGovde, p + Vector3.up * (govdeBoy / 2 - .2f), new Vector3(.38f, govdeBoy / 2 + .2f, .38f));
+                if (cam)
+                {
+                    for (int k = 0; k < 3; k++)
+                        Ekle(koni, ton, p + Vector3.up * (boy * (.28f + k * .19f)),
+                            new Vector3(cap * (.5f - k * .09f), boy * .4f, cap * (.5f - k * .09f)));
+                }
+                else
+                {
+                    int tac = r.Next(3, 6);
+                    for (int k = 0; k < tac; k++)
+                    {
+                        float aci = k * Mathf.PI * 2 / tac;
+                        Vector3 kayma = new Vector3(Mathf.Cos(aci) * cap * .18f, boy * .68f + Aralik(r, -.3f, .6f), Mathf.Sin(aci) * cap * .18f);
+                        Ekle(kure, ton, p + kayma, new Vector3(cap * .62f, cap * .7f, cap * .62f));
+                    }
+                }
             }
             else
             {
-                float boy = Aralik(r, 0.5f, 1f);
-                var tas = Parca(PrimitiveType.Sphere, "Kaya", p + Vector3.up * boy / 2,
-                    new Vector3(cap, boy, cap * 0.85f), kaya);
-                tas.Rotate(0, Aralik(r, 0, 360), 0);
+                float boy = Aralik(r, .7f, 1.4f);
+                birlesim.Ekle(kure, kaya, p + Vector3.up * boy * .15f, Quaternion.Euler(0, Aralik(r, 0, 360), 0), new Vector3(cap, boy, cap * .85f));
             }
             konan++;
         }
     }
 
-    Transform Parca(PrimitiveType tip, string ad, Vector3 p, Vector3 olcek, Material m)
+    void Ekle(Mesh mesh, Material m, Vector3 p, Vector3 olcek) => birlesim.Ekle(mesh, m, p, Quaternion.identity, olcek);
+
+    static Mesh Koni()
     {
-        var go = GameObject.CreatePrimitive(tip);
-        go.name = ad;
-        var carpisma = go.GetComponent<Collider>();
-        carpisma.enabled = false;
-        Destroy(carpisma);
-        go.transform.SetParent(transform, false);
-        go.transform.position = p;
-        go.transform.localScale = olcek;
-        go.GetComponent<MeshRenderer>().sharedMaterial = m;
-        return go.transform;
+        const int dilim = 12;
+        var v = new Vector3[(dilim + 1) * 2 + 1];
+        var uv = new Vector2[v.Length];
+        var t = new int[dilim * 6];
+        for (int i = 0; i <= dilim; i++)
+        {
+            float aci = i * Mathf.PI * 2 / dilim;
+            v[i * 2] = new Vector3(Mathf.Cos(aci), 0, Mathf.Sin(aci));
+            v[i * 2 + 1] = Vector3.up;
+            uv[i * 2] = new Vector2(i / (float)dilim, 0);
+            uv[i * 2 + 1] = new Vector2(i / (float)dilim, 1);
+            if (i == dilim) continue;
+            int k = i * 6;
+            t[k] = i * 2; t[k + 1] = i * 2 + 1; t[k + 2] = i * 2 + 2;
+            t[k + 3] = v.Length - 1; t[k + 4] = i * 2; t[k + 5] = i * 2 + 2;
+        }
+        var mesh = new Mesh { name = "CamKoni", vertices = v, uv = uv, triangles = t };
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     static float Aralik(System.Random r, float az, float cok) => az + (float)r.NextDouble() * (cok - az);

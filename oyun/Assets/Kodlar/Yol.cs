@@ -95,8 +95,8 @@ public class Yol : MonoBehaviour
             Vector3 yan = Vector3.Cross(Vector3.up, Yon(i)).normalized;
             koseler[2 * i] = n[i] + yan * sol + Vector3.up * yukseklik;
             koseler[2 * i + 1] = n[i] + yan * sag + Vector3.up * yukseklik;
-            uv[2 * i] = new Vector2(0, yolBoyu / genislik);
-            uv[2 * i + 1] = new Vector2(1, yolBoyu / genislik);
+            uv[2 * i] = new Vector2(0, yolBoyu / 4f);
+            uv[2 * i + 1] = new Vector2(1, yolBoyu / 4f);
         }
         for (int i = 0; i < n.Count - 1; i++)
         {

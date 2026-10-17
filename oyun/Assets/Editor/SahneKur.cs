@@ -20,13 +20,22 @@ public static class SahneKur
         Directory.CreateDirectory(MALZEME_KLASORU);
         var sahne = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-        var cim = Malzeme("Cim", new Color(0.30f, 0.48f, 0.27f));
-        var asfalt = Malzeme("Asfalt", new Color(0.33f, 0.34f, 0.36f));
+        var cimDoku = DokuUret.Uret("Cim", 512, 1);
+        var toprakDoku = DokuUret.Uret("Toprak", 512, 2);
+        var asfaltDoku = DokuUret.Uret("Asfalt", 512, 0);
+        var kabukDoku = DokuUret.Uret("Kabuk", 256, 3);
+        var cim = Malzeme("Cim", Color.white);
+        Dokula(cim, cimDoku, new Vector2(1, 1));
+        var toprak = Malzeme("Toprak", Color.white);
+        Dokula(toprak, toprakDoku, Vector2.one);
+        var asfalt = Malzeme("Asfalt", Color.white);
+        Dokula(asfalt, asfaltDoku, new Vector2(2, 1));
         var beyaz = Malzeme("Beyaz", new Color(0.95f, 0.95f, 0.92f));
         var kirmizi = Malzeme("MotorKirmizi", new Color(0.85f, 0.22f, 0.18f));
         var siyah = Malzeme("Lastik", new Color(0.08f, 0.08f, 0.09f));
         var kask = Malzeme("Kask", new Color(0.18f, 0.45f, 0.85f));
-        var agacGovde = Malzeme("AgacGovde", new Color(0.36f, 0.26f, 0.17f));
+        var agacGovde = Malzeme("AgacGovde", Color.white);
+        Dokula(agacGovde, kabukDoku, new Vector2(2, 2));
         var yaprak = Malzeme("Yaprak", new Color(0.25f, 0.40f, 0.23f));
         var kaya = Malzeme("Kaya", new Color(0.43f, 0.45f, 0.42f));
         var yildiz = Malzeme("Yildiz", new Color(1f, 0.78f, 0.16f));
@@ -34,29 +43,35 @@ public static class SahneKur
         yildiz.SetColor("_EmissionColor", new Color(0.25f, 0.17f, 0.02f));
         EditorUtility.SetDirty(yildiz);
 
-        RenderSettings.ambientMode = AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.42f, 0.45f, 0.50f);
+        var ufuk = new Color(.70f, .77f, .80f);
+        RenderSettings.skybox = Gokyuzu();
+        RenderSettings.ambientMode = AmbientMode.Trilight;
+        RenderSettings.ambientSkyColor = new Color(.48f, .59f, .72f);
+        RenderSettings.ambientEquatorColor = new Color(.57f, .59f, .55f);
+        RenderSettings.ambientGroundColor = new Color(.24f, .27f, .22f);
         var isik = new GameObject("Gunes").AddComponent<Light>();
         isik.type = LightType.Directional;
-        isik.intensity = 1.1f;
-        isik.color = new Color(1f, 0.96f, 0.88f);
+        isik.intensity = 1.05f;
+        isik.color = new Color(1f, .95f, .85f);
         isik.shadows = LightShadows.Soft;
-        isik.transform.rotation = Quaternion.Euler(50, -30, 0);
-
-        var zemin = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        zemin.name = "Zemin";
-        Object.DestroyImmediate(zemin.GetComponent<Collider>());
-        zemin.transform.position = new Vector3(30, -0.01f, 180);
-        zemin.transform.localScale = new Vector3(50, 1, 50);  // 500 m x 500 m
-        zemin.GetComponent<MeshRenderer>().sharedMaterial = cim;
-
+        isik.shadowStrength = .8f;
+        isik.transform.rotation = Quaternion.Euler(40, -30, 0);
+        RenderSettings.sun = isik;
         var yolGo = new GameObject("Yol", typeof(MeshFilter), typeof(MeshRenderer));
         var yol = yolGo.AddComponent<Yol>();
         yolGo.GetComponent<MeshRenderer>().sharedMaterial = asfalt;
         yol.kenarMalzemesi = beyaz;
         yol.bitisMalzemesi = beyaz;
 
+        AraziUret.Kur(yol, cimDoku, toprakDoku);
+        var sus = new GameObject("YolSusleri").AddComponent<YolSusu>();
+        sus.yol = yol;
+        sus.beyaz = beyaz;
+        sus.kirmizi = Malzeme("BordurKirmizi", new Color(.58f, .16f, .12f));
+        sus.reflektor = Malzeme("Reflektor", new Color(.72f, .49f, .23f));
+
         var oyun = new GameObject("Oyun");
+        oyun.AddComponent<Grafik>();
         var alici = oyun.AddComponent<HareketAlici>();
         oyun.AddComponent<EkranGoruntusu>();
 
@@ -90,6 +105,13 @@ public static class SahneKur
         cevre.agacGovde = agacGovde;
         cevre.yaprak = yaprak;
         cevre.kaya = kaya;
+        cevre.yaprakTonlari = new[]
+        {
+            yaprak,
+            Malzeme("YaprakAcik", new Color(.32f, .44f, .23f)),
+            Malzeme("YaprakKoyu", new Color(.18f, .31f, .20f)),
+            Malzeme("YaprakZeytin", new Color(.36f, .43f, .22f)),
+        };
 
         var arayuz = oyun.AddComponent<Arayuz>();
         arayuz.alici = alici;
@@ -105,13 +127,13 @@ public static class SahneKur
         var kamera = new GameObject("Kamera", typeof(Camera), typeof(AudioListener));
         kamera.tag = "MainCamera";
         var cam = kamera.GetComponent<Camera>();
-        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.clearFlags = CameraClearFlags.Skybox;
         cam.backgroundColor = new Color(0.62f, 0.78f, 0.92f);
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
-        RenderSettings.fogStartDistance = 70f;
-        RenderSettings.fogEndDistance = 260f;
-        RenderSettings.fogColor = cam.backgroundColor;
+        RenderSettings.fogStartDistance = 110f;
+        RenderSettings.fogEndDistance = 520f;
+        RenderSettings.fogColor = ufuk;
         cam.farClipPlane = 600;
         kamera.transform.position = new Vector3(0, 4, -9);
         var takip = kamera.AddComponent<KameraTakip>();
@@ -149,6 +171,32 @@ public static class SahneKur
         if (rapor.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded) EditorApplication.Exit(1);
     }
 
+    static void Dokula(Material m, Texture2D doku, Vector2 tekrar)
+    {
+        m.mainTexture = doku;
+        m.mainTextureScale = tekrar;
+        m.SetFloat("_Glossiness", .08f);
+        EditorUtility.SetDirty(m);
+    }
+
+    static Material Gokyuzu()
+    {
+        string yol = MALZEME_KLASORU + "/Gokyuzu.mat";
+        var m = AssetDatabase.LoadAssetAtPath<Material>(yol);
+        if (m == null)
+        {
+            m = new Material(Shader.Find("Skybox/Procedural"));
+            AssetDatabase.CreateAsset(m, yol);
+        }
+        m.SetFloat("_SunSize", .035f);
+        m.SetFloat("_SunSizeConvergence", 5f);
+        m.SetFloat("_AtmosphereThickness", 1.1f);
+        m.SetColor("_SkyTint", new Color(.50f, .55f, .60f));
+        m.SetColor("_GroundColor", new Color(.37f, .40f, .34f));
+        m.SetFloat("_Exposure", 1.1f);
+        EditorUtility.SetDirty(m);
+        return m;
+    }
     static Material Malzeme(string ad, Color renk)
     {
         string yol = $"{MALZEME_KLASORU}/{ad}.mat";
