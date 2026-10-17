@@ -95,6 +95,7 @@ public static class SahneKur
         seyirciler.ten = Malzeme("SeyirciTen", new Color(.68f, .43f, .28f));
         seyirciler.pantolon = Malzeme("SeyirciPantolon", new Color(.15f, .20f, .28f));
         seyirciler.sapka = Malzeme("SeyirciSapka", new Color(.85f, .69f, .28f));
+        seyirciler.belirginTisort = Malzeme("SeyirciCakRengi", new Color(1f, .72f, .05f));
         seyirciler.tisortler = new[] {
             Malzeme("SeyirciMavi", new Color(.18f, .43f, .67f)),
             Malzeme("SeyirciMercan", new Color(.76f, .31f, .23f)),
