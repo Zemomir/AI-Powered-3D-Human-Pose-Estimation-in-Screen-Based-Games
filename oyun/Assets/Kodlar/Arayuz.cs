@@ -127,11 +127,11 @@ public class Arayuz : MonoBehaviour
         sureMetni = Yazi(root, "", -352, 18, 306, 76, 36, FontStyle.Bold, TextAnchor.MiddleRight, true);
 
         durumMetni = Yazi(root, "", 0, 5, 1180, 300, 58, FontStyle.Bold, TextAnchor.MiddleCenter, false, true);
-        detayPanel = Kutu(root, "Ayrıntı paneli", 24, 112, 590, 520, panelSoluk);
+        detayPanel = Kutu(root, "Ayrıntı paneli", 24, 112, 590, 520, panelSoluk).gameObject;
         detayPanel.GetComponent<Image>().raycastTarget = false;
         detayMetni = Yazi(detayPanel.transform, "", 24, 20, 542, 480, 23, FontStyle.Normal, TextAnchor.UpperLeft);
 
-        hizPanel = Kutu(root, "Hız çubuğu", 0, 118, 480, 18, new Color(.01f, .02f, .04f, .64f), false, false, true);
+        hizPanel = Kutu(root, "Hız çubuğu", 0, 118, 480, 18, new Color(.01f, .02f, .04f, .64f), false, false, true).gameObject;
         var dolgu = Kutu(hizPanel.transform, "Hız dolgusu", 0, 0, 0, 18, vurgu);
         var dr = dolgu.GetComponent<RectTransform>();
         dr.anchorMin = new Vector2(0, 0); dr.anchorMax = new Vector2(0, 1);
@@ -140,7 +140,7 @@ public class Arayuz : MonoBehaviour
         hizMetni = Yazi(root, "", 0, 58, 420, 54, 30, FontStyle.Bold, TextAnchor.MiddleCenter, false, false, true);
 
         yardimMetni = Yazi(root, "", 24, 20, 1872, 48, 21, FontStyle.Normal, TextAnchor.MiddleCenter, false, false, true);
-        bitisPanel = Kutu(root, "Bitiş paneli", 0, 0, 1050, 650, new Color(.035f, .065f, .13f, .94f), false, true);
+        bitisPanel = Kutu(root, "Bitiş paneli", 0, 0, 1050, 650, new Color(.035f, .065f, .13f, .94f), false, true).gameObject;
         bitisPanel.SetActive(false);
         bitisBaslik = Yazi(bitisPanel.transform, "Bitti!", 0, 25, 1000, 90, 58, FontStyle.Bold, TextAnchor.MiddleCenter);
         bitisSure = Yazi(bitisPanel.transform, "", 30, 125, 940, 54, 32, FontStyle.Normal, TextAnchor.MiddleCenter);
