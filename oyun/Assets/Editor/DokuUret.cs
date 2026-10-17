@@ -37,7 +37,12 @@ public static class DokuUret
         string yol = "Assets/Dokular/" + ad + ".png";
         byte[] bayt = doku.EncodeToPNG();
         Object.DestroyImmediate(doku);
-        if (!File.Exists(yol) || !System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(yol), bayt)) File.WriteAllBytes(yol, bayt);
+        if (!File.Exists(yol) || !System.Linq.Enumerable.SequenceEqual(File.ReadAllBytes(yol), bayt))
+        {
+            File.WriteAllBytes(yol, bayt);
+            // Yeni ya da değişen dosya içe aktarılmadan importer'ı yok (null): sıfırdan kurulumda çökerdi.
+            AssetDatabase.ImportAsset(yol, ImportAssetOptions.ForceSynchronousImport);
+        }
         var aktarici = (TextureImporter)AssetImporter.GetAtPath(yol);
         aktarici.wrapMode = TextureWrapMode.Repeat;
         aktarici.mipmapEnabled = true;
