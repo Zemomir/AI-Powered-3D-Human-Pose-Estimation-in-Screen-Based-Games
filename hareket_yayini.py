@@ -1,7 +1,7 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
 Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
-Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz,sol_el,sag_el,sol_bilek_gor,sag_bilek_gor,tut,ham_omuz_egim sütunlarını içerir:
+Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz,sol_el,sag_el,sol_bilek_gor,sag_bilek_gor,tut,ham_omuz_egim,durum sütunlarını içerir:
     {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031, "sol_el": -1.5, "sag_el": 0.6, "tut": true}
   egim : kalça ortası -> omuz ortası açısının nötre göre farkı * GOVDE_OLCEK; + = kişi sağına eğik.
   ham_egim/notr_egim: ölçeklenmemiş gövde açısı/nötrü; ham_omuz_egim: karşılaştırma için omuz çizgisi.
@@ -21,6 +21,8 @@ omuz genişliği medyanla (tek tük kötü kareye dayanıklı). c tuşu yeniden 
 
 Kullanım:
     .venv\\Scripts\\python.exe hareket_yayini.py http://192.168.1.144:4747/video
+    .venv\\Scripts\\python.exe hareket_yayini.py 0 0 --onizleme 0 --ebeveyn PID
+Komutlar: 127.0.0.1:5066 UDP, {"komut":"kalibre"} / {"komut":"cik"}.
 Tuşlar: c yeniden kalibre, q / Esc çıkış.
 """
 
@@ -32,6 +34,8 @@ import socket
 import sys
 import time
 import statistics
+import argparse
+import threading
 from collections import deque
 
 # Saf ölçüm ve tekrar analizi kamera paketleri olmadan import edilebilir.
@@ -247,7 +251,68 @@ class HareketIsleyici:
                 "tut": self.tutucu.tutuluyor}
 
 
+def ebeveyn_yasiyor(pid):
+    """Windows'ta sinyal göndermeden süreç durumunu sorgular."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        api = ctypes.WinDLL("kernel32", use_last_error=True)
+        api.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        api.OpenProcess.restype = wintypes.HANDLE
+        api.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        api.WaitForSingleObject.restype = wintypes.DWORD
+        api.CloseHandle.argtypes = (wintypes.HANDLE,)
+        api.CloseHandle.restype = wintypes.BOOL
+        h = api.OpenProcess(0x00100000 | 0x1000, False, pid)
+        if not h:
+            return False
+        try:
+            return api.WaitForSingleObject(h, 0) == 0x00000102  # WAIT_TIMEOUT: yaşıyor
+        finally:
+            api.CloseHandle(h)
+    try:
+        os.kill(pid, 0)  # Yalnız POSIX; Windows bu yola girmez.
+        return True
+    except OSError:
+        return False
+
+
+def ebeveyn_izle(pid, dur):
+    while not dur.is_set():
+        if not ebeveyn_yasiyor(pid):
+            dur.set()
+            return
+        dur.wait(1.0)
+
+
+def komutlari_oku(kanal, kal, isleyici, dur):
+    if kanal is None:
+        return
+    while True:
+        try:
+            veri, _ = kanal.recvfrom(4096)
+        except BlockingIOError:
+            return
+        except OSError:
+            return
+        try:
+            komut = json.loads(veri.decode("utf-8")).get("komut")
+        except (ValueError, UnicodeError, AttributeError):
+            continue
+        if komut == "cik":
+            dur.set()
+        elif komut == "kalibre":
+            kal.sifirla()
+            isleyici.sifirla()
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Fizyo-Oyun kamera köprüsü")
+    parser.add_argument("kaynak", nargs="?", default="0")
+    parser.add_argument("aci", nargs="?", type=int, choices=(0, 90, 180, 270))
+    parser.add_argument("--onizleme", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--ebeveyn", type=int)
+    args = parser.parse_args()
     global cv2, mp, np, vision, DONDURME, DONMA_SANIYE, ciz, omuz_egimi
     import cv2
     import mediapipe as mp
@@ -255,9 +320,9 @@ def main():
     from mediapipe.tasks.python import BaseOptions, vision
     from kamera_test import DONDURME, DONMA_SANIYE, MODEL, SonKare, ciz, omuz_egimi
 
-    arg = sys.argv[1] if len(sys.argv) > 1 else "0"
+    arg = args.kaynak
     kaynak = int(arg) if arg.isdigit() else arg
-    aci = int(sys.argv[2]) if len(sys.argv) > 2 else (0 if isinstance(kaynak, int) else 90)
+    aci = args.aci if args.aci is not None else (0 if isinstance(kaynak, int) else 90)
     if aci not in DONDURME:
         raise SystemExit(f"Döndürme 0, 90, 180 ya da 270 olmalı, gelen: {aci}")
 
@@ -265,8 +330,21 @@ def main():
         base_options=BaseOptions(model_asset_path=str(MODEL)),
         running_mode=vision.RunningMode.VIDEO,
     )
-    soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     kamera = SonKare(kaynak)
+    soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    kanal = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        kanal.bind(("127.0.0.1", 5066))
+        kanal.setblocking(False)
+    except OSError as e:
+        print(f"Komut portu 5066 açılamadı, komutsuz devam ediliyor: {e}", file=sys.stderr)
+        kanal.close()
+        kanal = None
+    dur = threading.Event()
+    izleyici = None
+    if args.ebeveyn is not None:
+        izleyici = threading.Thread(target=ebeveyn_izle, args=(args.ebeveyn, dur), daemon=True)
+        izleyici.start()
     olcum_dizini = os.path.join(os.path.dirname(os.path.abspath(__file__)), "olcumler")
     csv_yolu = os.path.join(olcum_dizini, time.strftime("oyun_%Y%m%d_%H%M%S.csv"))
     kayit = None
@@ -274,7 +352,7 @@ def main():
     try:
         os.makedirs(olcum_dizini, exist_ok=True)
         kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
-        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim"), restval="")
+        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor", "tut", "ham_omuz_egim", "durum"), restval="")
         csv_yazici.writeheader()
         print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
     except OSError as e:
@@ -284,8 +362,13 @@ def main():
         kayit = csv_yazici = None
     kayit_durumu = {"kayit": kayit, "yazici": csv_yazici, "son_flush": time.monotonic(), "uyari": False}
     try:
-        dongu(kamera, secenek, aci, soket, kayit_durumu)
+        dongu(kamera, secenek, aci, soket, kayit_durumu, bool(args.onizleme), kanal, dur)
     finally:
+        dur.set()
+        if izleyici is not None:
+            izleyici.join(timeout=1.1)
+        if kanal is not None:
+            kanal.close()
         gonder(soket, sinyal_yok(time.monotonic()), kayit_durumu, {"saat": round(time.time(), 3)})  # oyun son eğimde takılı kalmasın
         if kayit_durumu["kayit"] is not None:
             try:
@@ -294,7 +377,8 @@ def main():
                 print(f"Ölçüm kaydı kapatılamadı: {e}", file=sys.stderr)
         kamera.kapat()
         soket.close()
-        cv2.destroyAllWindows()
+        if args.onizleme:
+            cv2.destroyAllWindows()
 
 
 def gonder(soket, mesaj, kayit_durumu=None, ek=None):
@@ -320,10 +404,12 @@ def gonder(soket, mesaj, kayit_durumu=None, ek=None):
 
 
 def sinyal_yok(simdi, kalibre=False, donuk=False):
-    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk, "sol_el": None, "sag_el": None, "tut": False}
+    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk, "sol_el": None, "sag_el": None, "tut": False,
+            "durum": "donuk" if donuk else "kisi_yok"}
 
 
-def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
+def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, kanal=None, dur=None):
+    dur = dur if dur is not None else threading.Event()
     son_no, son_ts = 0, 0
     kal = Kalibrasyon()
     isleyici = HareketIsleyici()
@@ -331,7 +417,10 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
     uyari_gosterildi = False
 
     with vision.PoseLandmarker.create_from_options(secenek) as model:
-        while kamera.calisiyor:
+        while not dur.is_set():
+            komutlari_oku(kanal, kal, isleyici, dur)
+            if dur.is_set():
+                return
             no, kare, kare_zamani = kamera.al()
             if kare is None or no == son_no:
                 simdi = time.monotonic()
@@ -340,18 +429,19 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                     gonder(soket, sinyal_yok(simdi, kal.tamam, donuk=True), kayit_durumu, {"saat": round(time.time(), 3)})
                     son_sessiz = simdi
                     isleyici.sifirla()
-                if simdi - kare_zamani > DONMA_SANIYE:
+                if onizleme and simdi - kare_zamani > DONMA_SANIYE:
                     if not uyari_gosterildi:
                         bos = np.zeros((480, 640, 3), np.uint8)
                         cv2.putText(bos, "KARE GELMIYOR", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
                         cv2.imshow(PENCERE, bos)
                         uyari_gosterildi = True
-                t = cv2.waitKey(1) & 0xFF
+                t = cv2.waitKey(1) & 0xFF if onizleme else -1
                 if t in (ord("q"), 27):
                     return
                 if t == ord("c"):
                     kal.sifirla()
                     isleyici.sifirla()
+                dur.wait(0.005)
                 continue
             son_no = no
             uyari_gosterildi = False
@@ -364,7 +454,7 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             son_ts = ts
             rgb = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))
             sonuc = model.detect_for_video(rgb, ts)
-            if sonuc.pose_landmarks:
+            if onizleme and sonuc.pose_landmarks:
                 ciz(kare, sonuc.pose_landmarks[0])
 
             egim, omuz_px, dz = ham_olcum(sonuc, kare.shape[1], kare.shape[0])
@@ -382,6 +472,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             kal.besle(simdi, egim, omuz_px, dz)
 
             mesaj = sinyal_yok(simdi, kal.tamam)
+            mesaj["durum"] = ("kisi_yok" if omuz_px is None else "kalca_yok" if egim is None
+                              else "hazir" if kal.tamam else "kalibrasyon")
             sol_el, sag_el, sol_gor, sag_gor = el_olcum(sonuc, kare.shape[1], kare.shape[0], egim, omuz_px)
             mesaj.update(sol_el=sol_el, sag_el=sag_el)
             mesaj.update(isleyici.besle(simdi, kal, egim, omuz_px, sol_el, sag_el))
@@ -398,6 +490,9 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 "ham_omuz_egim": round(ham_omuz_egim, 2) if ham_omuz_egim is not None else None,
             }
             gonder(soket, mesaj, kayit_durumu, ek)
+
+            if not onizleme:
+                continue
 
             if not kal.tamam:
                 durum = (f"KALIBRASYON: oynayacagin gibi dur, kipirdama  {kal.kalan(simdi):.0f}" if egim is not None

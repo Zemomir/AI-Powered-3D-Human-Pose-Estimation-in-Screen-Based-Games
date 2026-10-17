@@ -9,6 +9,7 @@ Tuşlar (pencere seçiliyken): r görüntüyü saat yönünde 90° döndürür, 
 """
 
 import math
+import os
 import sys
 import threading
 import time
@@ -42,9 +43,17 @@ class SonKare:
     """
 
     def __init__(self, kaynak):
-        self.cap = cv2.VideoCapture(kaynak)
+        if isinstance(kaynak, int) and os.name == "nt":
+            self.cap = cv2.VideoCapture(kaynak, cv2.CAP_DSHOW)
+            if not self.cap.isOpened():
+                self.cap.release()
+                self.cap = cv2.VideoCapture(kaynak)
+        else:
+            self.cap = cv2.VideoCapture(kaynak)
         if not self.cap.isOpened():
-            raise SystemExit(f"Kamera açılamadı: {kaynak!r}")
+            self.cap.release()
+            print(f"Kamera açılamadı: {kaynak!r}; bağlantıyı ve kamera iznini kontrol edin.", file=sys.stderr)
+            raise SystemExit(2)
         self.kare = None
         self.no = 0
         self.zaman = time.monotonic()  # son karenin geldiği an; donmuş akışı görünür kılmak için

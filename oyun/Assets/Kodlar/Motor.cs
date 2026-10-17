@@ -5,6 +5,8 @@ using UnityEngine;
 public class Motor : MonoBehaviour
 {
     public HareketAlici alici;
+    public KopruYonetici kopru;
+    public bool BaslamaIzni = true;
     public Yol yol;
     public Transform onTeker, arkaTeker;
     public event System.Action Sifirlandi;
@@ -94,12 +96,7 @@ public class Motor : MonoBehaviour
             else if (c == '-') yeni -= 0.1f;
         }
         yeni = Mathf.Clamp(Mathf.Round(yeni * 10f) / 10f, 0.3f, 2f);
-        if (yeni != HizHassasiyeti)  // erken return yok: aşağıdaki dönüş ayarı da her karede işlensin
-        {
-            HizHassasiyeti = yeni;
-            PlayerPrefs.SetFloat(HASSASIYET_ANAHTARI, yeni);
-            PlayerPrefs.Save();
-        }
+        HizHassasiyetiAyarla(yeni);
 
         float yeniDonus = DonusHassasiyeti;
         foreach (char c in Input.inputString)
@@ -108,13 +105,30 @@ public class Motor : MonoBehaviour
             else if (c == '1') yeniDonus -= 0.1f;
         }
         yeniDonus = Mathf.Clamp(Mathf.Round(yeniDonus * 10f) / 10f, 0.3f, 2f);
-        if (yeniDonus != DonusHassasiyeti)
-        {
-            DonusHassasiyeti = yeniDonus;
-            PlayerPrefs.SetFloat(DONUS_HASSASIYETI_ANAHTARI, yeniDonus);
-            PlayerPrefs.Save();
-        }
+        DonusHassasiyetiAyarla(yeniDonus);
     }
+
+    public void HizHassasiyetiAyarla(float deger)
+    {
+        if (!float.IsFinite(deger)) return;
+        float yeni = Mathf.Clamp(Mathf.Round(deger * 10f) / 10f, 0.3f, 2f);
+        if (yeni == HizHassasiyeti) return;
+        HizHassasiyeti = yeni;
+        PlayerPrefs.SetFloat(HASSASIYET_ANAHTARI, yeni);
+        PlayerPrefs.Save();
+    }
+
+    public void DonusHassasiyetiAyarla(float deger)
+    {
+        if (!float.IsFinite(deger)) return;
+        float yeni = Mathf.Clamp(Mathf.Round(deger * 10f) / 10f, 0.3f, 2f);
+        if (yeni == DonusHassasiyeti) return;
+        DonusHassasiyeti = yeni;
+        PlayerPrefs.SetFloat(DONUS_HASSASIYETI_ANAHTARI, yeni);
+        PlayerPrefs.Save();
+    }
+
+    public void YerindeAyarla() { ayarIstendi = true; }
 
     public void Sifirla()
     {
@@ -130,16 +144,22 @@ public class Motor : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.R)) Sifirla();
+        // Kamera adresine yazarken R/C ve sayılar oyun komutu olmasın.
+        var secili = UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
+        if (secili != null && secili.GetComponent<UnityEngine.UI.InputField>()?.isFocused == true) return;
+        if (Input.GetKeyDown(KeyCode.R)) { kopru?.KalibreEt(); Sifirla(); }
         if (Input.GetKeyDown(KeyCode.Y)) YumusatmaAcik = !YumusatmaAcik;
         HassasiyetTuslari();
+        if (Input.GetKeyDown(KeyCode.C)) kopru?.KalibreEt();
+        if (!BaslamaIzni) return;
         // Bağlıyken "kalibre değil" = Python yeniden kalibre ediyor, eski düzeltme kalmasın.
         // Bağlantı kısa kopunca (Bagli false) ofset korunur: C ile ayarlanan sıfır kaybolmasın.
         bool yenidenKalibre = alici.Bagli && !alici.Kalibre;
         bool ofsetSil = alici.KlavyeModu || yenidenKalibre;
         if (ofsetSil && (OneSifir != 0f || EgimSifir != 0f)) { OneSifir = 0f; EgimSifir = 0f; duzOne = null; }
         if (yenidenKalibre) ayarIstendi = true;
-        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti) ayarIstendi = true;
+        if (Input.GetKeyDown(KeyCode.C) && !alici.KlavyeModu && Hal != Durum.Bitti)
+            ayarIstendi = true;
         DuzeltilmisEgim = alici.Egim.HasValue ? alici.Egim.Value - (alici.KlavyeModu ? 0f : EgimSifir) : (float?)null;
         DuzeltilmisOne = alici.One.HasValue ? alici.One.Value - (alici.KlavyeModu ? 0f : OneSifir) : (float?)null;
         float? egim = DuzeltilmisEgim, one = DuzeltilmisOne;

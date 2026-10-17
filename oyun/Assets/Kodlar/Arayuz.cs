@@ -8,6 +8,7 @@ public class Arayuz : MonoBehaviour
     public Yildizlar yildizlar;
     public Seyirciler seyirciler;
     public Ses ses;
+    public AnaMenu anaMenu;
 
     GUIStyle kucuk, buyuk, sayac, sag, orta;
     Texture2D doku;
@@ -57,6 +58,7 @@ public class Arayuz : MonoBehaviour
 
     void OnGUI()
     {
+        if (anaMenu != null && anaMenu.HudGizli) return;
         if (motor == null) return;
         StilleriHazirla();
         // Dar pencerelerde de bütün öğeler görünür; oran korunur.

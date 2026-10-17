@@ -125,6 +125,17 @@ public static class SahneKur
         arayuz.seyirciler = seyirciler;
         arayuz.ses = ses;
 
+        var kopru = oyun.AddComponent<KopruYonetici>();
+        kopru.alici = alici;
+        motor.kopru = kopru;
+        var anaMenu = oyun.AddComponent<AnaMenu>();
+        anaMenu.motor = motor;
+        anaMenu.alici = alici;
+        anaMenu.kopru = kopru;
+        anaMenu.arayuz = arayuz;
+        anaMenu.ses = ses;
+        arayuz.anaMenu = anaMenu;
+
         var kayit = oyun.AddComponent<OyunKaydi>();
         kayit.alici = alici;
         kayit.motor = motor;

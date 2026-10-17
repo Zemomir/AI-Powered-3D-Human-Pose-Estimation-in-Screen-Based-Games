@@ -41,11 +41,18 @@ public class Ses : MonoBehaviour
     void Update()
     {
         if (!Input.GetKeyDown(KeyCode.M)) return;
-        SesAcik = !SesAcik;
+        SesAyarla(!SesAcik);
+    }
+
+    public void SesAyarla(bool acik)
+    {
+        SesAcik = acik;
         if (kaynak != null) kaynak.mute = !SesAcik;
         PlayerPrefs.SetInt("SesAcik", SesAcik ? 1 : 0);
         PlayerPrefs.Save();
     }
+
+    public void Kis(bool kisik) { if (kaynak != null) kaynak.volume = kisik ? 0.08f : 0.4f; }
 
     void LateUpdate()
     {

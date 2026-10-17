@@ -29,7 +29,9 @@ public class OyunKaydi : MonoBehaviour
     {
         try
         {
-            string dizin = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "olcumler"));
+            string kopru = KopruYonetici.KopruKlasoruBul();
+            string dizin = kopru != null ? Path.Combine(kopru, "olcumler") :
+                Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "olcumler"));
             Directory.CreateDirectory(dizin);
             string yol = Path.Combine(dizin, "motor_" + DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture) + ".csv");
             yazici = new StreamWriter(yol, false, new UTF8Encoding(false)) { NewLine = "\n" };

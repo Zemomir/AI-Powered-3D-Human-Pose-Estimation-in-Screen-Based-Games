@@ -27,6 +27,9 @@ public class HareketAlici : MonoBehaviour
     public bool GoruntuDonuk => !KlavyeModu && Bagli && donuk;  // Python çalışıyor ama telefondan kare gelmiyor
     public bool HizTutuluyor => !KlavyeModu && Bagli && kalibre && !donuk && egim.HasValue && one.HasValue && tut;
     public string PortHatasi { get; private set; }               // ekranda gerçek sebep görünsün
+    public string Durum { get; private set; }
+    public float SonMesajYasi => sonMesajZamani < 0 ? float.PositiveInfinity : Time.realtimeSinceStartup - sonMesajZamani;
+    public int SonMesajNo { get; private set; }
 
     UdpClient istemci;
     Thread dinleyici;
@@ -80,6 +83,8 @@ public class HareketAlici : MonoBehaviour
             kalibre = k; egim = e; one = o; donuk = d;
             solEl = sol; sagEl = sag;
             tut = h;
+            Durum = Deger(mesaj, "durum", out string durum) && durum != "null" ? durum.Trim('"') : null;
+            SonMesajNo++;
             sonMesajZamani = Time.realtimeSinceStartup;
         }
 
