@@ -1,11 +1,14 @@
 """Kameradan gövde hareketini okuyup oyuna (Unity) UDP ile gönderir.
 Oyun içi hissi ölçüm verisiyle karşılaştırmak için gönderilen mesajları CSV'ye kaydeder.
 
-Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz sütunlarını içerir:
-    {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031}
+Her karede 127.0.0.1:5065'e tek satırlık JSON gider; CSV kaydı saat,t,kalibre,egim,one,donuk,ham_egim,ham_dz,notr_egim,notr_dz,ham_omuz,notr_omuz,sol_el,sag_el,sol_bilek_gor,sag_bilek_gor sütunlarını içerir:
+    {"t": 12.345, "kalibre": true, "egim": 8.2, "one": 0.031, "sol_el": -1.5, "sag_el": 0.6}
   egim : yan eğim, derece; + = kişi sağına eğik (nötr duruşa göre)
   one  : öne/geriye eğilme, omuz genişliği oranından metre eşdeğeri; + = öne, nötre göre.
   donuk: true ise telefondan kare gelmiyor (Python çalışıyor ama akış dondu).
+  sol_el/sag_el: (omuz_y - bilek_y) / omuz mesafesi, piksel cinsinden; + = bilek omuzdan yukarıda.
+  Taraflar eğimle aynı ekran x kuralını izler: x'i büyük omuz sağdır; kalibrasyon ve yumuşatma uygulanmaz.
+  Görünmeyen bilek null, karenin üstüne çıkan bilek düşük görünürlükte de ölçülür; donuk karede iki el null.
   Kişi ya da omuzlar görünmüyorsa egim ve one null olur; oyun bunu "sinyal yok" diye ele almalı.
   Kamera donarsa her SESSIZ_ARALIK_SN'de null mesaj, çıkışta da son bir null mesaj gider. Yine de
   oyun ~0,5 sn mesaj almazsa kendisi "sinyal yok" saymalı (betik çökerse null gönderemez).
@@ -66,6 +69,26 @@ def ham_olcum(sonuc, g, y):
     return egim, omuz_px, dz
 
 
+def el_olcum(sonuc, g, y, egim, omuz_orani):
+    """(sol_el, sag_el, sol_bilek_gor, sag_bilek_gor); omuz_orani ham_olcum ile aynıdır."""
+    if egim is None or omuz_orani is None or omuz_orani <= 0:
+        return None, None, None, None
+    n = sonuc.pose_landmarks[0]
+    # omuz_egimi gibi ekran x sırası: x'i büyük omuz SAĞ; MediaPipe taraf etiketi kullanılmaz.
+    esler = sorted(((11, 15), (12, 16)), key=lambda es: n[es[0]].x)
+    eller, gorunurlukler = [], []
+    for omuz, bilek in esler:
+        b = n[bilek]
+        gor = b.visibility or 0.0
+        gorunurlukler.append(round(gor, 3) if math.isfinite(gor) else None)
+        el = (n[omuz].y - b.y) * y / (omuz_orani * g)
+        if (0 <= b.y <= 1 and gor < 0.3) or not math.isfinite(el):
+            eller.append(None)
+        else:
+            eller.append(round(el, 2))
+    return eller[0], eller[1], gorunurlukler[0], gorunurlukler[1]
+
+
 class Kalibrasyon:
     def __init__(self):
         self.sifirla()
@@ -123,7 +146,7 @@ def main():
     try:
         os.makedirs(olcum_dizini, exist_ok=True)
         kayit = open(csv_yolu, "w", newline="", encoding="utf-8")
-        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz"), restval="")
+        csv_yazici = csv.DictWriter(kayit, fieldnames=("saat", "t", "kalibre", "egim", "one", "donuk", "ham_egim", "ham_dz", "notr_egim", "notr_dz", "ham_omuz", "notr_omuz", "sol_el", "sag_el", "sol_bilek_gor", "sag_bilek_gor"), restval="")
         csv_yazici.writeheader()
         print(f"Ölçüm kaydı: {csv_yolu}", file=sys.stderr)
     except OSError as e:
@@ -169,7 +192,7 @@ def gonder(soket, mesaj, kayit_durumu=None, ek=None):
 
 
 def sinyal_yok(simdi, kalibre=False, donuk=False):
-    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk}
+    return {"t": round(simdi, 3), "kalibre": kalibre, "egim": None, "one": None, "donuk": donuk, "sol_el": None, "sag_el": None}
 
 
 def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
@@ -224,6 +247,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
             kal.besle(simdi, egim, omuz_px, dz)
 
             mesaj = sinyal_yok(simdi, kal.tamam)
+            sol_el, sag_el, sol_gor, sag_gor = el_olcum(sonuc, kare.shape[1], kare.shape[0], egim, omuz_px)
+            mesaj.update(sol_el=sol_el, sag_el=sag_el)
             if kal.tamam and egim is not None:
                 e = egim - kal.notr_egim
                 duz_egim = e if duz_egim is None else YUMUSATMA * e + (1 - YUMUSATMA) * duz_egim
@@ -247,6 +272,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None):
                 "notr_dz": round(kal.notr_dz, 4) if kal.notr_dz is not None else None,
                 "ham_omuz": round(omuz_px, 5) if omuz_px is not None else None,
                 "notr_omuz": round(kal.notr_omuz, 5) if kal.notr_omuz is not None else None,
+                "sol_bilek_gor": sol_gor,
+                "sag_bilek_gor": sag_gor,
             }
             gonder(soket, mesaj, kayit_durumu, ek)
 

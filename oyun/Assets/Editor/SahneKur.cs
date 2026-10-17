@@ -75,7 +75,7 @@ public static class SahneKur
         var govde = new GameObject("Govde").transform;
         govde.SetParent(motorGo.transform, false);
         motor.govde = govde;
-        MotorModeli.Kur(govde, out motor.onTeker, out motor.arkaTeker);
+        MotorModeli.Kur(govde, out motor.onTeker, out motor.arkaTeker, out Transform solKol, out Transform sagKol);
 
         var ses = oyun.AddComponent<Ses>();
         ses.motor = motor;
@@ -85,8 +85,25 @@ public static class SahneKur
         yildizlar.motor = motor;
         yildizlar.ses = ses;
         yildizlar.malzeme = yildiz;
+        var seyirciler = new GameObject("Seyirciler").AddComponent<Seyirciler>();
+        seyirciler.yol = yol;
+        seyirciler.motor = motor;
+        seyirciler.alici = alici;
+        seyirciler.ses = ses;
+        seyirciler.solKolKok = solKol;
+        seyirciler.sagKolKok = sagKol;
+        seyirciler.ten = Malzeme("SeyirciTen", new Color(.68f, .43f, .28f));
+        seyirciler.pantolon = Malzeme("SeyirciPantolon", new Color(.15f, .20f, .28f));
+        seyirciler.sapka = Malzeme("SeyirciSapka", new Color(.85f, .69f, .28f));
+        seyirciler.tisortler = new[] {
+            Malzeme("SeyirciMavi", new Color(.18f, .43f, .67f)),
+            Malzeme("SeyirciMercan", new Color(.76f, .31f, .23f)),
+            Malzeme("SeyirciYesil", new Color(.27f, .54f, .35f)),
+            Malzeme("SeyirciMor", new Color(.53f, .31f, .59f)),
+        };
         var otoPilot = oyun.AddComponent<OtoPilot>();
         otoPilot.motor = motor;
+        otoPilot.seyirciler = seyirciler;
         var cevre = new GameObject("Cevre").AddComponent<Cevre>();
         cevre.yol = yol;
         cevre.agacGovde = agacGovde;
@@ -104,12 +121,14 @@ public static class SahneKur
         arayuz.alici = alici;
         arayuz.motor = motor;
         arayuz.yildizlar = yildizlar;
+        arayuz.seyirciler = seyirciler;
         arayuz.ses = ses;
 
         var kayit = oyun.AddComponent<OyunKaydi>();
         kayit.alici = alici;
         kayit.motor = motor;
         kayit.yildizlar = yildizlar;
+        kayit.seyirciler = seyirciler;
 
         var kamera = new GameObject("Kamera", typeof(Camera), typeof(AudioListener));
         kamera.tag = "MainCamera";

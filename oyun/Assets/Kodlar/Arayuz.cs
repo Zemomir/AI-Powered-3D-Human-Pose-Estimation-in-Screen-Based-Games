@@ -6,6 +6,7 @@ public class Arayuz : MonoBehaviour
     public HareketAlici alici;
     public Motor motor;
     public Yildizlar yildizlar;
+    public Seyirciler seyirciler;
     public Ses ses;
 
     GUIStyle kucuk, buyuk, sayac, sag, orta;
@@ -65,6 +66,7 @@ public class Arayuz : MonoBehaviour
         GUI.matrix = Matrix4x4.TRS(new Vector3((Screen.width - 1280f * olcek) / 2,
             (Screen.height - 720f * olcek) / 2, 0), Quaternion.identity, Vector3.one * olcek);
         Golgeli(new Rect(24, 18, 600, 60), $"★ {(yildizlar != null ? yildizlar.Toplanan : 0)} / {(yildizlar != null ? yildizlar.Toplam : 0)}", sayac);
+        Golgeli(new Rect(300, 18, 530, 60), $"Çak {(seyirciler != null ? seyirciler.SolCak + seyirciler.SagCak : 0)}/{(seyirciler != null ? seyirciler.SolToplam + seyirciler.SagToplam : 0)}", sayac);
         Golgeli(new Rect(850, 18, 406, 60), SureYazi(motor.Sure), sag);
 
         Golgeli(new Rect(480, 610, 320, 44), $"{motor.Hiz * 3.6f:0} km/sa", orta);
@@ -100,8 +102,10 @@ public class Arayuz : MonoBehaviour
         if (alici != null && !alici.KlavyeModu)
             sol += $"\nSıfır: öne {motor.OneSifir * 100:+0.0;-0.0;0.0} cm, eğim {motor.EgimSifir:+0;-0;0}°";
         if (ses != null) sol += $"\nSes: {(ses.SesAcik ? "açık" : "kapalı")}";
-        Kutu(new Rect(20, 92, 420, 310), new Color(0.06f, 0.09f, 0.09f, 0.78f));
-        Golgeli(new Rect(32, 102, 396, 290), sol, kucuk);
+        sol += $"\nsol_el: {ElYazi(alici != null ? alici.SolEl : null)} · {(seyirciler != null && seyirciler.SolKalkik ? "kalkık" : "indi")}";
+        sol += $"\nsag_el: {ElYazi(alici != null ? alici.SagEl : null)} · {(seyirciler != null && seyirciler.SagKalkik ? "kalkık" : "indi")}";
+        Kutu(new Rect(20, 92, 420, 365), new Color(0.06f, 0.09f, 0.09f, 0.78f));
+        Golgeli(new Rect(32, 102, 396, 345), sol, kucuk);
     }
 
     string DurumMesaji()
@@ -127,8 +131,10 @@ public class Arayuz : MonoBehaviour
         Golgeli(new Rect(x + 20, 275, genislik - 40, 45), $"★ {(yildizlar != null ? yildizlar.Toplanan : 0)} / {(yildizlar != null ? yildizlar.Toplam : 0)}", orta);
         string taraflar = yildizlar != null ? $"Sol {yildizlar.SolToplanan}/{yildizlar.SolToplam} · Orta {yildizlar.OrtaToplanan}/{yildizlar.OrtaToplam} · Sağ {yildizlar.SagToplanan}/{yildizlar.SagToplam}" : "Sol 0/0 · Orta 0/0 · Sağ 0/0";
         Golgeli(new Rect(x + 20, 330, genislik - 40, 50), taraflar, orta);
+        string caklar = seyirciler != null ? $"Çak — Sol {seyirciler.SolCak}/{seyirciler.SolToplam} · Sağ {seyirciler.SagCak}/{seyirciler.SagToplam}" : "Çak — Sol 0/0 · Sağ 0/0";
+        Golgeli(new Rect(x + 20, 380, genislik - 40, 45), caklar, orta);
         string rekor = ses == null || ses.EnIyiSure <= 0 ? "En iyi süre: —" : ses.YeniRekor ? "Yeni rekor!" : "En iyi süre: " + SureYazi(ses.EnIyiSure);
-        Golgeli(new Rect(x + 20, 395, genislik - 40, 45), rekor, orta);
+        Golgeli(new Rect(x + 20, 425, genislik - 40, 45), rekor, orta);
         Golgeli(new Rect(x + 20, 475, genislik - 40, 45), "R ile tekrar", orta);
     }
 
@@ -139,6 +145,8 @@ public class Arayuz : MonoBehaviour
         GUI.DrawTexture(r, doku);
         GUI.color = eski;
     }
+
+    static string ElYazi(float? el) => el.HasValue ? el.Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "null";
 
     static string SureYazi(float sn)
     {

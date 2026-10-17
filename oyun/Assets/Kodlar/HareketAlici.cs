@@ -22,6 +22,8 @@ public class HareketAlici : MonoBehaviour
     public bool Kalibre => KlavyeModu || (Bagli && kalibre);
     public float? Egim => KlavyeModu ? klavyeEgim : (Bagli ? egim : null);
     public float? One => KlavyeModu ? klavyeOne : (Bagli ? one : null);
+    public float? SolEl => KlavyeModu ? (Input.GetKey(KeyCode.Q) ? 1f : -1.5f) : (Bagli && !donuk ? solEl : null);
+    public float? SagEl => KlavyeModu ? (Input.GetKey(KeyCode.E) ? 1f : -1.5f) : (Bagli && !donuk ? sagEl : null);
     public bool GoruntuDonuk => !KlavyeModu && Bagli && donuk;  // Python çalışıyor ama telefondan kare gelmiyor
     public string PortHatasi { get; private set; }               // ekranda gerçek sebep görünsün
 
@@ -31,7 +33,7 @@ public class HareketAlici : MonoBehaviour
     string bekleyenMesaj;
     float sonMesajZamani = -1f;
     bool kalibre, donuk;
-    float? egim, one;
+    float? egim, one, solEl, sagEl;
     float klavyeEgim, klavyeOne;
 
     void OnEnable()
@@ -72,9 +74,10 @@ public class HareketAlici : MonoBehaviour
     {
         string mesaj;
         lock (kilit) { mesaj = bekleyenMesaj; bekleyenMesaj = null; }
-        if (mesaj != null && Oku(mesaj, out bool k, out float? e, out float? o, out bool d))
+        if (mesaj != null && Oku(mesaj, out bool k, out float? e, out float? o, out bool d, out float? sol, out float? sag))
         {
             kalibre = k; egim = e; one = o; donuk = d;
+            solEl = sol; sagEl = sag;
             sonMesajZamani = Time.realtimeSinceStartup;
         }
 
@@ -98,14 +101,16 @@ public class HareketAlici : MonoBehaviour
 
     // Küçük ve bilinen biçimde bir mesaj: JsonUtility null'ı 0 diye okurdu (0 = dik dur demek),
     // bu yüzden "değer yok" ile "sıfır" ayrı kalsın diye elle okunuyor.
-    static bool Oku(string json, out bool kalibre, out float? egim, out float? one, out bool donuk)
+    static bool Oku(string json, out bool kalibre, out float? egim, out float? one, out bool donuk, out float? solEl, out float? sagEl)
     {
-        kalibre = false; egim = null; one = null;
+        kalibre = false; egim = null; one = null; solEl = null; sagEl = null;
         donuk = Deger(json, "donuk", out string dn) && dn == "true";
         if (!Deger(json, "kalibre", out string k)) return false;
         kalibre = k == "true";
         if (Deger(json, "egim", out string e)) egim = Sayi(e);
         if (Deger(json, "one", out string o)) one = Sayi(o);
+        if (Deger(json, "sol_el", out string sol)) solEl = Sayi(sol);
+        if (Deger(json, "sag_el", out string sag)) sagEl = Sayi(sag);
         return true;
     }
 

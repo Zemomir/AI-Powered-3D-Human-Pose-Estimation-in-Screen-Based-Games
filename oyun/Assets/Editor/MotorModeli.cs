@@ -5,8 +5,10 @@ using UnityEngine.Rendering;
 // Sadece editörde kurulur; çalışma anında Motor yalnız gövdeyi ve iki aksı döndürür.
 public static class MotorModeli
 {
-    public static void Kur(Transform govde, out Transform onTeker, out Transform arkaTeker)
+    public static void Kur(Transform govde, out Transform onTeker, out Transform arkaTeker,
+        out Transform solKolKok, out Transform sagKolKok)
     {
+        solKolKok = sagKolKok = null;
         var boya = Malzeme("Boya", new Color(.68f, .075f, .055f), .12f, .55f);
         var lastik = Malzeme("Lastik", new Color(.035f, .038f, .042f), 0, .08f);
         var siyah = Malzeme("Doseme", new Color(.055f, .06f, .068f), 0, .18f);
@@ -62,9 +64,14 @@ public static class MotorModeli
             var omuz = new Vector3(taraf * .16f, 1.40f, -.04f);
             var dirsek = new Vector3(taraf * .28f, 1.22f, .18f);
             var el = new Vector3(taraf * .33f, 1.13f, .50f);
-            Uzuv(surucu, ad + "UstKol", omuz, dirsek, .115f, mont);
-            Uzuv(surucu, ad + "AltKol", dirsek, el, .095f, mont);
-            Parca(PrimitiveType.Sphere, surucu, ad + "Eldiven", el, new Vector3(.10f, .085f, .12f), siyah);
+            var kolKok = new GameObject(ad + "KolKok").transform;
+            kolKok.SetParent(surucu, false);
+            kolKok.localPosition = omuz;
+            if (taraf < 0) solKolKok = kolKok; else sagKolKok = kolKok;
+            // Kök omuzda; eski sürücü koordinatlarından omuzu çıkarınca görünüş aynen korunur.
+            Uzuv(kolKok, ad + "UstKol", Vector3.zero, dirsek - omuz, .115f, mont);
+            Uzuv(kolKok, ad + "AltKol", dirsek - omuz, el - omuz, .095f, mont);
+            Parca(PrimitiveType.Sphere, kolKok, ad + "Eldiven", el - omuz, new Vector3(.10f, .085f, .12f), siyah);
             var kalca = new Vector3(taraf * .13f, 1.00f, -.30f);
             var diz = new Vector3(taraf * .265f, .73f, .12f);
             var bilek = new Vector3(taraf * .29f, .44f, -.18f);

@@ -10,7 +10,7 @@ public class Ses : MonoBehaviour
     public float EnIyiSure { get; private set; }
     public bool YeniRekor { get; private set; }
     AudioSource kaynak;
-    AudioClip topla, basla, bitis;
+    AudioClip topla, basla, bitis, cak;
     Motor.Durum oncekiHal;
     bool klavyeKullanildi;
 
@@ -27,6 +27,7 @@ public class Ses : MonoBehaviour
         topla = Tonlar("topla", 0.06f, new[] { 660f, 880f });
         basla = Tonlar("basla", 0.18f, new[] { 523.25f });
         bitis = Tonlar("bitis", 0.13f, new[] { 523.25f, 659.25f, 783.99f });
+        cak = Saklama();
     }
 
     void OnEnable()
@@ -69,7 +70,24 @@ public class Ses : MonoBehaviour
 
     void Sifirla() { YeniRekor = false; klavyeKullanildi = false; oncekiHal = Motor.Durum.Bekliyor; }
     public void Topla() { Cal(topla); }
+    public void Cak() { Cal(cak); }
     void Cal(AudioClip klip) { if (SesAcik && kaynak != null && klip != null) kaynak.PlayOneShot(klip); }
+
+    static AudioClip Saklama()
+    {
+        const int ornekHizi = 44100;
+        var veri = new float[4410];
+        var rastgele = new System.Random(5065);
+        for (int i = 0; i < veri.Length; i++)
+        {
+            float t = i / (float)ornekHizi;
+            float zarf = Mathf.Min(1f, t / .001f) * Mathf.Exp(-t * 65f) * (1f - i / (float)veri.Length);
+            veri[i] = ((float)rastgele.NextDouble() * 2f - 1f) * .8f * zarf;
+        }
+        var klip = AudioClip.Create("cak", veri.Length, 1, ornekHizi, false);
+        klip.SetData(veri, 0);
+        return klip;
+    }
 
     static AudioClip Tonlar(string ad, float notaSn, float[] notalar)
     {
@@ -93,5 +111,6 @@ public class Ses : MonoBehaviour
         if (topla != null) Destroy(topla);
         if (basla != null) Destroy(basla);
         if (bitis != null) Destroy(bitis);
+        if (cak != null) Destroy(cak);
     }
 }

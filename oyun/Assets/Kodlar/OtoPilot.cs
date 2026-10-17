@@ -9,6 +9,7 @@ using UnityEngine;
 public class OtoPilot : MonoBehaviour
 {
     public Motor motor;
+    public Seyirciler seyirciler;
 
     const string AdresArgumani = "-otopilotOfset";
     UdpClient istemci;
@@ -16,6 +17,8 @@ public class OtoPilot : MonoBehaviour
     float sonrakiGonderim;
     float ofset;
     int ipucu = -1;  // EnYakin dar pencerede arar; ipucu motorla birlikte ilerlemeli
+    bool elKullan = true;
+    float solBitis, sagBitis, solTekrar, sagTekrar;
 
     void Awake()
     {
@@ -30,6 +33,9 @@ public class OtoPilot : MonoBehaviour
             if (argumanlar[i] == AdresArgumani &&
                 float.TryParse(argumanlar[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out float deger) &&
                 float.IsFinite(deger)) ofset = deger;
+        int elArgumani = Array.IndexOf(argumanlar, "-otopilotEl");
+        if (elArgumani >= 0 && elArgumani + 1 < argumanlar.Length)
+            elKullan = argumanlar[elArgumani + 1] != "0";
 
         istemci = new UdpClient();
         int port = FindFirstObjectByType<HareketAlici>()?.port ?? 5065;
@@ -67,11 +73,36 @@ public class OtoPilot : MonoBehaviour
             }
         }
 
+        float solEl = -1.6f, sagEl = -1.6f;
+        if (elKullan && motor.Hal == Motor.Durum.Suruyor && seyirciler != null)
+        {
+            solEl = ElDarbasi(seyirciler.BekleyenSeyirci(false, ipucu), ref solBitis, ref solTekrar);
+            sagEl = ElDarbasi(seyirciler.BekleyenSeyirci(true, ipucu), ref sagBitis, ref sagTekrar);
+        }
+        else ElleriSifirla();
+
         string json = "{\"t\":" + Time.realtimeSinceStartup.ToString("R", CultureInfo.InvariantCulture) +
             ",\"kalibre\":true,\"egim\":" + egim.ToString("R", CultureInfo.InvariantCulture) +
-            ",\"one\":" + one.ToString("R", CultureInfo.InvariantCulture) + ",\"donuk\":false}";
+            ",\"one\":" + one.ToString("R", CultureInfo.InvariantCulture) + ",\"donuk\":false" +
+            ",\"sol_el\":" + solEl.ToString("R", CultureInfo.InvariantCulture) +
+            ",\"sag_el\":" + sagEl.ToString("R", CultureInfo.InvariantCulture) + "}";
         byte[] veri = Encoding.UTF8.GetBytes(json);
         istemci.Send(veri, veri.Length, hedef);
+    }
+
+    void OnEnable() { if (motor != null) motor.Sifirlandi += ElleriSifirla; }
+    void OnDisable() { if (motor != null) motor.Sifirlandi -= ElleriSifirla; }
+    void ElleriSifirla() { solBitis = sagBitis = solTekrar = sagTekrar = 0; }
+
+    static float ElDarbasi(bool bekleyen, ref float bitis, ref float tekrar)
+    {
+        float simdi = Time.realtimeSinceStartup;
+        if (bekleyen && simdi >= tekrar)
+        {
+            bitis = simdi + .6f;
+            tekrar = bitis + .2f; // En az altı UDP örneği boyunca inik: yeniden kurulma görülsün.
+        }
+        return simdi < bitis ? .6f : -1.6f;
     }
 
     void OnDestroy()

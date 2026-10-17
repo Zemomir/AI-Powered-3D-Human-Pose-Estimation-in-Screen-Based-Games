@@ -12,11 +12,13 @@ public class OyunKaydi : MonoBehaviour
     public HareketAlici alici;
     public Motor motor;
     public Yildizlar yildizlar;
+    public Seyirciler seyirciler;
 
     static readonly string[] Sutunlar = {
         "saat", "t", "olay", "hal", "bagli", "kalibre", "klavye", "donuk",
         "ham_egim", "ham_one", "egim", "one", "egim_sifir", "one_sifir", "hiz",
-        "hedef_hiz", "hiz_hassasiyeti", "donus_hassasiyeti", "yumusatma", "yol_disinda", "ilerleme", "yildiz_toplam"
+        "hedef_hiz", "hiz_hassasiyeti", "donus_hassasiyeti", "yumusatma", "yol_disinda", "ilerleme", "yildiz_toplam",
+        "sol_el", "sag_el", "sol_kalkik", "sag_kalkik", "cak_toplam"
     };
     StreamWriter yazici;
     float sonSatir, sonFlush;
@@ -45,6 +47,8 @@ public class OyunKaydi : MonoBehaviour
         string olay = TusOlayi();
         if (yildizlar != null && !string.IsNullOrEmpty(yildizlar.KareOlayi))
             olay += (olay.Length == 0 ? "" : " ") + yildizlar.KareOlayi;
+        if (seyirciler != null && !string.IsNullOrEmpty(seyirciler.KareOlayi))
+            olay += (olay.Length == 0 ? "" : " ") + seyirciler.KareOlayi;
         float simdi = Time.realtimeSinceStartup;
         if (olay.Length > 0 || simdi - sonSatir >= 1f / 30f)
         {
@@ -56,7 +60,10 @@ public class OyunKaydi : MonoBehaviour
                     Say(motor.DuzeltilmisEgim), Say(motor.DuzeltilmisOne), Say(motor.EgimSifir), Say(motor.OneSifir),
                     Say(motor.Hiz), Say(motor.HedefHiz), Say(motor.HizHassasiyeti), Say(motor.DonusHassasiyeti),
                     Bool(motor.YumusatmaAcik), Bool(motor.YolDisinda), Say(motor.Ilerleme),
-                    (yildizlar != null ? yildizlar.Toplanan : 0).ToString(CultureInfo.InvariantCulture)
+                    (yildizlar != null ? yildizlar.Toplanan : 0).ToString(CultureInfo.InvariantCulture),
+                    Say(alici.SolEl), Say(alici.SagEl), Bool(seyirciler != null && seyirciler.SolKalkik),
+                    Bool(seyirciler != null && seyirciler.SagKalkik),
+                    (seyirciler != null ? seyirciler.SolCak + seyirciler.SagCak : 0).ToString(CultureInfo.InvariantCulture)
                 }));
                 sonSatir = simdi;
                 if (simdi - sonFlush >= 1f) { yazici.Flush(); sonFlush = simdi; }
