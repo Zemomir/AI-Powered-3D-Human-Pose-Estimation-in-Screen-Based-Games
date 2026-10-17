@@ -31,9 +31,6 @@ public static class SahneKur
         var asfalt = Malzeme("Asfalt", Color.white);
         Dokula(asfalt, asfaltDoku, new Vector2(2, 1));
         var beyaz = Malzeme("Beyaz", new Color(0.95f, 0.95f, 0.92f));
-        var kirmizi = Malzeme("MotorKirmizi", new Color(0.85f, 0.22f, 0.18f));
-        var siyah = Malzeme("Lastik", new Color(0.08f, 0.08f, 0.09f));
-        var kask = Malzeme("Kask", new Color(0.18f, 0.45f, 0.85f));
         var agacGovde = Malzeme("AgacGovde", Color.white);
         Dokula(agacGovde, kabukDoku, new Vector2(2, 2));
         var yaprak = Malzeme("Yaprak", new Color(0.25f, 0.40f, 0.23f));
@@ -82,13 +79,7 @@ public static class SahneKur
         var govde = new GameObject("Govde").transform;
         govde.SetParent(motorGo.transform, false);
         motor.govde = govde;
-        Parca(PrimitiveType.Cube, govde, new Vector3(0, 0.75f, 0), new Vector3(0.45f, 0.45f, 1.6f), kirmizi, "Kasa");
-        Parca(PrimitiveType.Cylinder, govde, new Vector3(0, 0.4f, 0.75f), new Vector3(0.75f, 0.08f, 0.75f), siyah, "OnTeker", new Vector3(0, 0, 90));
-        Parca(PrimitiveType.Cylinder, govde, new Vector3(0, 0.4f, -0.75f), new Vector3(0.75f, 0.08f, 0.75f), siyah, "ArkaTeker", new Vector3(0, 0, 90));
-        motor.onTeker = govde.Find("OnTeker");
-        motor.arkaTeker = govde.Find("ArkaTeker");
-        Parca(PrimitiveType.Capsule, govde, new Vector3(0, 1.35f, -0.15f), new Vector3(0.45f, 0.45f, 0.45f), kirmizi, "Surucu");
-        Parca(PrimitiveType.Sphere, govde, new Vector3(0, 1.95f, -0.05f), new Vector3(0.38f, 0.38f, 0.38f), kask, "Kask");
+        MotorModeli.Kur(govde, out motor.onTeker, out motor.arkaTeker);
 
         var ses = oyun.AddComponent<Ses>();
         ses.motor = motor;
@@ -212,15 +203,4 @@ public static class SahneKur
         return m;
     }
 
-    static void Parca(PrimitiveType tip, Transform ust, Vector3 konum, Vector3 olcek, Material m, string ad, Vector3 aci = default)
-    {
-        var go = GameObject.CreatePrimitive(tip);
-        go.name = ad;
-        Object.DestroyImmediate(go.GetComponent<Collider>());
-        go.transform.SetParent(ust, false);
-        go.transform.localPosition = konum;
-        go.transform.localRotation = Quaternion.Euler(aci);
-        go.transform.localScale = olcek;
-        go.GetComponent<MeshRenderer>().sharedMaterial = m;
-    }
 }
