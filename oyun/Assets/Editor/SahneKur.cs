@@ -66,6 +66,8 @@ public static class SahneKur
         var oyun = new GameObject("Oyun");
         oyun.AddComponent<Grafik>();
         var alici = oyun.AddComponent<HareketAlici>();
+        var kameraOnizleme = oyun.AddComponent<KameraOnizleme>();
+        kameraOnizleme.alici = alici;
         oyun.AddComponent<EkranGoruntusu>();
 
         var motorGo = new GameObject("Motor");

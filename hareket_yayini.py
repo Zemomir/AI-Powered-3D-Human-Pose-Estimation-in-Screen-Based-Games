@@ -45,6 +45,7 @@ OMUZLAR, KALCALAR = (11, 12), (23, 24)
 MIN_GORUNURLUK = 0.5  # kamera_test ile aynı omuz görünürlüğü koşulu.
 
 HEDEF = ("127.0.0.1", 5065)
+GORUNTU_HEDEF = ("127.0.0.1", 5067)
 KALIBRASYON_SN = 3.0
 YERLESME_SN = 1.0  # 2026-10-17 deneme 1: yerleşme payı olmayan kalibrasyon kirlendi
 SESSIZ_ARALIK_SN = 0.1
@@ -559,6 +560,8 @@ def main():
     parser.add_argument("kaynak", nargs="?", default="oto")
     parser.add_argument("aci", nargs="?", type=int, choices=(0, 90, 180, 270))
     parser.add_argument("--onizleme", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--goruntu", type=int, choices=(0, 1), default=1,
+                        help="Oyun içi kamera görüntüsünü yerel UDP ile yayınla")
     parser.add_argument("--ebeveyn", type=int)
     parser.add_argument("--telefon", help="Otomatik aramada denenecek isteğe bağlı telefon URL'si")
     args = parser.parse_args()
@@ -589,9 +592,12 @@ def main():
         izleyici = threading.Thread(target=ebeveyn_izle, args=(args.ebeveyn, dur), daemon=True)
         izleyici.start()
     kamera = soket = kanal = komutcu = bildirim = None
+    goruntu = None
     bekleyen = queue.Queue()
     kayit_durumu = {"kayit": None, "yazici": None, "son_flush": time.monotonic(), "uyari": False}
     try:
+        if args.goruntu:
+            goruntu = GoruntuYayini()
         kanal = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             kanal.bind(("127.0.0.1", 5066))
@@ -647,7 +653,7 @@ def main():
                 break
             kayit_durumu["kamera_bilgisi"] = {"kaynak": etiket, "aci": aci}
             print(f"KAYNAK {etiket} aci={aci}", flush=True)
-            yeniden = dongu(kamera, secenek, aci, soket, kayit_durumu, onizleme, bekleyen, dur, bildirim)
+            yeniden = dongu(kamera, secenek, aci, soket, kayit_durumu, onizleme, bekleyen, dur, bildirim, goruntu)
             if yeniden is None:
                 break
             onizleme = yeniden
@@ -656,6 +662,8 @@ def main():
             kaynak = "oto"
     finally:
         dur.set()
+        if goruntu is not None:
+            goruntu.kapat()
         if bildirim is not None:
             bildirim.durdur()
         if izleyici is not None:
@@ -707,8 +715,53 @@ def sinyal_yok(simdi, kalibre=False, donuk=False):
             "durum": "donuk" if donuk else "kisi_yok"}
 
 
+class GoruntuYayini:
+    """Son işlenmiş kareyi en fazla 15 Hz yayınlar; görüntü hatası ölçümü kesmez."""
+    def __init__(self):
+        self.soket = None
+        self.son_deneme = -math.inf
+        self.son_kodlama_ms = 0.0
+        # JPEG desteği yoksa isteğe bağlı görüntü kanalı sinyal akışını engellemesin.
+        if not callable(getattr(cv2, "imencode", None)):
+            return
+        try:
+            self.soket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.soket.setblocking(False)
+        except OSError:
+            self.kapat()
+
+    def gonder(self, kare):
+        simdi = time.monotonic()
+        if self.soket is None or simdi - self.son_deneme < 1 / 15:
+            return
+        self.son_deneme = simdi
+        try:
+            kucuk = cv2.resize(kare, (320, max(1, round(kare.shape[0] * 320 / kare.shape[1]))),
+                               interpolation=cv2.INTER_AREA)
+            basla = time.perf_counter()
+            try:
+                for kalite in (70, 40):
+                    tamam, jpeg = cv2.imencode(".jpg", kucuk, [cv2.IMWRITE_JPEG_QUALITY, kalite])
+                    if not tamam:
+                        return
+                    if jpeg.nbytes <= 60_000:
+                        break
+                else:
+                    return
+            finally:
+                self.son_kodlama_ms = (time.perf_counter() - basla) * 1000
+            self.soket.sendto(jpeg.tobytes(), GORUNTU_HEDEF)
+        except (OSError, cv2.error):
+            pass
+
+    def kapat(self):
+        if self.soket is not None:
+            self.soket.close()
+            self.soket = None
+
+
 def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleyen=None, dur=None,
-          bildirim=None):
+          bildirim=None, goruntu=None):
     dur = dur if dur is not None else threading.Event()
     son_no, son_ts = 0, 0
     kal = Kalibrasyon()
@@ -768,7 +821,7 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
             son_ts = ts
             rgb = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(kare, cv2.COLOR_BGR2RGB))
             sonuc = model.detect_for_video(rgb, ts)
-            if onizleme and sonuc.pose_landmarks:
+            if (onizleme or goruntu is not None) and sonuc.pose_landmarks:
                 ciz(kare, sonuc.pose_landmarks[0])
 
             egim, omuz_px, dz = ham_olcum(sonuc, kare.shape[1], kare.shape[0])
@@ -806,6 +859,8 @@ def dongu(kamera, secenek, aci, soket, kayit_durumu=None, onizleme=True, bekleye
             if bildirim is not None:
                 bildirim.durdur()  # İlk sonuç hazır; CSV'ye iki iş parçacığı aynı anda yazmasın.
             gonder(soket, mesaj, kayit_durumu, ek)
+            if goruntu is not None:
+                goruntu.gonder(kare)
 
             if not onizleme:
                 continue
