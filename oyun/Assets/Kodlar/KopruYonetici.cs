@@ -15,18 +15,13 @@ public class KopruYonetici : MonoBehaviour
 {
     public HareketAlici alici;
     public string KopruKlasoru { get; private set; }
-    public string PythonYolu
-    {
-        get
-        {
-            if (KopruKlasoru == null) return null;
-            string paketPython = Path.Combine(KopruKlasoru, "python", "python.exe");
-            if (File.Exists(paketPython)) return paketPython;
-            string gelistirmePython = Path.Combine(KopruKlasoru, ".venv", "Scripts", "python.exe");
-            return File.Exists(gelistirmePython) ? gelistirmePython : gelistirmePython;
-        }
-    }
-    public bool KurulumTamam => PythonYolu != null && File.Exists(PythonYolu);
+    public string PythonYolu { get; private set; }
+    public bool KurulumTamam { get; private set; }
+    public bool GelistirmeDuzeni { get; private set; }
+    bool paketPythonSecili;
+    public string KurulumEksikMesaji => paketPythonSecili || (PythonYolu == null && !GelistirmeDuzeni) ?
+        "Kamera köprüsü eksik: oyunu zip'ten yeniden çıkar" :
+        "Kamera köprüsü eksik: köprü klasöründe kurulum.bat'ı çalıştır";
     public bool Harici { get; private set; }
     public string Hata { get; private set; }
     public bool Baslatiliyor => baslatBekliyor || kapananSurec != null || (surec != null && !mesajGeldi);
@@ -88,8 +83,20 @@ public class KopruYonetici : MonoBehaviour
     void Awake()
     {
         KopruKlasoru = KopruKlasoruBul();
+        KurulumDurumunuYenile();
         acilisZamani = Time.realtimeSinceStartup;
         if (TestModu) enabled = false;
+    }
+
+    public void KurulumDurumunuYenile()
+    {
+        GelistirmeDuzeni = KopruKlasoru != null && File.Exists(Path.Combine(KopruKlasoru, "kurulum.bat"));
+        if (KopruKlasoru == null) { PythonYolu = null; KurulumTamam = false; return; }
+        string paketPython = Path.Combine(KopruKlasoru, "python", "python.exe");
+        string gelistirmePython = Path.Combine(KopruKlasoru, ".venv", "Scripts", "python.exe");
+        paketPythonSecili = File.Exists(paketPython);
+        PythonYolu = paketPythonSecili ? paketPython : File.Exists(gelistirmePython) ? gelistirmePython : null;
+        KurulumTamam = PythonYolu != null;
     }
 
     void OnEnable()
@@ -204,7 +211,7 @@ public class KopruYonetici : MonoBehaviour
                 int kod = surec.ExitCode;
                 Hata = kod == 0 ? "Köprü kapatıldı" :
                     kod == 1 && sebep != null && (sebep.Contains("ModuleNotFoundError") || sebep.Contains("ImportError")) ?
-                    "Kamera köprüsü eksik: oyunu zip'ten yeniden çıkar ya da kurulum.bat'ı çalıştır" :
+                    KurulumEksikMesaji + (string.IsNullOrEmpty(sebep) ? "" : ": " + sebep) :
                     (kod == 2 ? (sebep != null && sebep.StartsWith("Kamera bulunamadı", StringComparison.Ordinal) ? "" : "Kamera bulunamadı: ") : $"Köprü kapandı (kod {kod}): ") +
                     (string.IsNullOrEmpty(sebep) ? "Sebep bildirilmedi" : sebep);
                 surec.Dispose(); surec = null;
@@ -229,7 +236,9 @@ public class KopruYonetici : MonoBehaviour
             Komut("onizleme", onizleme ? 1 : 0);
             return;
         }
-        if (surec != null || !KurulumTamam) return;
+        if (surec != null) return;
+        KurulumDurumunuYenile();
+        if (!KurulumTamam) return;
         if (alici != null && alici.PortHatasi != null) { Hata = alici.PortHatasi; return; }
         try
         {
@@ -244,6 +253,9 @@ public class KopruYonetici : MonoBehaviour
                 RedirectStandardOutput = true, RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8
             };
+            bilgi.EnvironmentVariables.Remove("PYTHONHOME");
+            bilgi.EnvironmentVariables.Remove("PYTHONPATH");
+            bilgi.EnvironmentVariables["PYTHONNOUSERSITE"] = "1";
             bilgi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
             bilgi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             stdoutBitti = stderrBitti = false;

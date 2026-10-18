@@ -44,7 +44,10 @@ if ([string]::IsNullOrWhiteSpace($Python)) {
     if (-not $homeLine) { throw "pyvenv.cfg icinde home satiri yok: $cfg" }
     $Python = ($homeLine -replace '^\s*home\s*=\s*', '').Trim().Trim('"')
 }
-if (-not (Test-Path -LiteralPath (Join-Path $Python 'python.exe') -PathType Leaf)) { throw "Tas inabilir Python bulunamadi: $Python" }
+$Python = (Resolve-Path -LiteralPath $Python).ProviderPath.TrimEnd('\')
+$pythonLib = Join-Path $Python 'Lib'
+$pythonDlls = Join-Path $Python 'DLLs'
+if (-not (Test-Path -LiteralPath (Join-Path $Python 'python.exe') -PathType Leaf)) { throw "Tasinabilir Python bulunamadi: $Python" }
 $bundledPython = Join-Path $bridge 'python'
 New-Item -ItemType Directory -Path $bundledPython -Force | Out-Null
 function Copy-RuntimeTree([string]$Source, [string]$Destination, [string]$Mode = 'runtime') {
@@ -52,11 +55,13 @@ function Copy-RuntimeTree([string]$Source, [string]$Destination, [string]$Mode =
         if ($item.PSIsContainer) {
             if ($item.Name -eq '__pycache__') { continue }
             if ($Mode -eq 'runtime' -and $Source -eq $Python -and $item.Name -in @('tcl','include','libs','Scripts')) { continue }
-            if ($Mode -eq 'runtime' -and $Source -eq (Join-Path $Python 'Lib') -and $item.Name -in @('test','idlelib','tkinter','turtledemo','ensurepip')) { continue }
+            if ($Mode -eq 'runtime' -and $Source -eq $pythonLib -and $item.Name -in @('test','idlelib','tkinter','turtledemo','ensurepip')) { continue }
             if ($Mode -eq 'packages' -and ($item.Name -eq 'pip' -or $item.Name -like 'pip-*.dist-info')) { continue }
             $target = Join-Path $Destination $item.Name
             New-Item -ItemType Directory -Path $target -Force | Out-Null
             Copy-RuntimeTree $item.FullName $target $Mode
+        } elseif ($Mode -eq 'runtime' -and $Source -eq $pythonDlls -and
+            ($item.Name -in @('_tkinter.pyd','tcl86t.dll','tk86t.dll') -or $item.Name -like '_test*.pyd')) { continue
         } elseif ($item.Extension -ne '.pyc') { Copy-Item -LiteralPath $item.FullName -Destination $Destination -Force }
     }
 }
