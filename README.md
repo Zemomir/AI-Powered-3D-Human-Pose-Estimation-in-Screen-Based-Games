@@ -11,10 +11,11 @@ Kamera kontrollü fizyoterapi oyunu, hemipleji tanılı çocuklar için gelişti
 
 ## Laptopta kurulum
 
-1. Python 3.13'ü [python.org](https://www.python.org/downloads/) üzerinden kur; kurulumda **Add Python to PATH** seçeneğini işaretle.
-2. GitHub Releases'tan oyunun ZIP dosyasını indirip aç.
-3. `FizyoOyun\kopru\kurulum.bat` dosyasını bir kez çalıştır. Paketleri ve poz modelini indirmek için internet gerekir.
-4. `FizyoOyun\FizyoOyun.exe` dosyasını aç.
+1. Releases'tan `FizyoOyun-<sürüm>.zip` dosyasını indir.
+2. ZIP dosyasına sağ tıkla ve **Tümünü ayıkla** seçeneğini seç.
+3. `FizyoOyun\FizyoOyun.exe` dosyasına çift tıkla. İnternet gerekmez.
+
+Windows “PC'niz korundu” uyarısı çıkarsa **Ek bilgi → Yine de çalıştır** seç (uygulama imzasızdır). Python kurulumu gerekmez.
 
 ## Kamera ve konumlanma
 
@@ -58,6 +59,5 @@ FizyoOyun/
     ├── kamera_test.py
     ├── models/pose_landmarker_full.task
     ├── requirements.txt
-    └── kurulum.bat
 ```
 

@@ -15,7 +15,17 @@ public class KopruYonetici : MonoBehaviour
 {
     public HareketAlici alici;
     public string KopruKlasoru { get; private set; }
-    public string PythonYolu => KopruKlasoru == null ? null : Path.Combine(KopruKlasoru, ".venv", "Scripts", "python.exe");
+    public string PythonYolu
+    {
+        get
+        {
+            if (KopruKlasoru == null) return null;
+            string paketPython = Path.Combine(KopruKlasoru, "python", "python.exe");
+            if (File.Exists(paketPython)) return paketPython;
+            string gelistirmePython = Path.Combine(KopruKlasoru, ".venv", "Scripts", "python.exe");
+            return File.Exists(gelistirmePython) ? gelistirmePython : gelistirmePython;
+        }
+    }
     public bool KurulumTamam => PythonYolu != null && File.Exists(PythonYolu);
     public bool Harici { get; private set; }
     public string Hata { get; private set; }
@@ -194,7 +204,7 @@ public class KopruYonetici : MonoBehaviour
                 int kod = surec.ExitCode;
                 Hata = kod == 0 ? "Köprü kapatıldı" :
                     kod == 1 && sebep != null && (sebep.Contains("ModuleNotFoundError") || sebep.Contains("ImportError")) ?
-                    "Kurulum eksik: kurulum.bat'ı yeniden çalıştır" :
+                    "Kamera köprüsü eksik: oyunu zip'ten yeniden çıkar ya da kurulum.bat'ı çalıştır" :
                     (kod == 2 ? (sebep != null && sebep.StartsWith("Kamera bulunamadı", StringComparison.Ordinal) ? "" : "Kamera bulunamadı: ") : $"Köprü kapandı (kod {kod}): ") +
                     (string.IsNullOrEmpty(sebep) ? "Sebep bildirilmedi" : sebep);
                 surec.Dispose(); surec = null;

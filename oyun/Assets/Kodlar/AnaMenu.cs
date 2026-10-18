@@ -249,7 +249,7 @@ public class AnaMenu : MonoBehaviour
         if (kopru.Hata != null) return kopru.Hata;
         if (kopru.YenidenBaglaniyor) return "Kamera aranıyor…";
         if (kopru.KopruKlasoru == null) return "Köprü klasörü bulunamadı. Oyunu köprüyle birlikte yerleştir veya -kopru <yol> kullan.";
-        if (!kopru.KurulumTamam) return "Kurulum gerekli: " + System.IO.Path.Combine(kopru.KopruKlasoru, "kurulum.bat") + " dosyasını çalıştır";
+        if (!kopru.KurulumTamam) return "Kamera köprüsü eksik: oyunu zip'ten yeniden çıkar ya da kurulum.bat'ı çalıştır";
         if (!KaynakOku(out _)) return "Telefon adresini IP:port olarak yaz (ör. 192.168.1.144:4747).";
         if (alici.PortHatasi != null) return alici.PortHatasi;
         string ek = kopru.Harici ? " · harici köprü" : "";
