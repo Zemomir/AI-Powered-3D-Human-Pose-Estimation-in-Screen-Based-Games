@@ -15,7 +15,7 @@ public class Seyirciler : MonoBehaviour
     public Material[] tisortler;
     public Material belirginTisort;
     public Transform solKolKok, sagKolKok;
-    public int tarafBasina = 6;
+    public int tarafBasina = 3;
     public float elEsik = -0.3f;
     const int cakOnce = 13, cakSonra = 0;
 
@@ -59,10 +59,11 @@ public class Seyirciler : MonoBehaviour
         int ilk = yol.BaslangicIndeksi + 40, son = yol.Noktalar.Count - 1 - 25;
         int adet = Mathf.Max(0, tarafBasina) * 2;
         if (son < ilk || adet == 0) return;
+        var indeksler = DuzIndeksleri(ilk, son, adet);
         var rastgele = new System.Random(5065);
-        for (int sira = 0; sira < adet; sira++)
+        for (int sira = 0; sira < indeksler.Count; sira++)
         {
-            int i = Mathf.RoundToInt(Mathf.Lerp(ilk, son, sira / (float)(adet - 1)));
+            int i = indeksler[sira];
             int taraf = sira % 2 == 0 ? -1 : 1;
             Vector3 yan = Vector3.Cross(Vector3.up, yol.Yon(i)).normalized;
             Vector3 p = yol.Noktalar[i] + yan * taraf * (yol.genislik / 2 + 1.6f);
@@ -86,6 +87,7 @@ public class Seyirciler : MonoBehaviour
             kisi.kok.position = p;
             kisi.kok.rotation = kisi.baslangicDonusu;
             kisiler.Add(kisi);
+            int anaIndeks = kisiler.Count - 1;
             if (taraf < 0) SolToplam++; else SagToplam++;
             for (int izleyiciNo = 0; izleyiciNo < 4; izleyiciNo++)
             {
@@ -102,13 +104,133 @@ public class Seyirciler : MonoBehaviour
                 if (!uygun) continue;
                 var izleyici = KisiKur(12 + sira * 4 + izleyiciNo, rastgele, true);
                 izleyici.indeks = i; izleyici.taraf = taraf; izleyici.konum = izleyiciP;
-                izleyici.hedef = kisiler.Count - 1;
+                izleyici.hedef = anaIndeks;
                 izleyici.sevincGecikmesi = (float)rastgele.NextDouble() * .25f;
                 izleyici.kok.position = izleyiciP;
                 izleyici.kok.rotation = Quaternion.LookRotation(-yan * taraf);
                 kisiler.Add(izleyici);
             }
         }
+    }
+
+    List<int> DuzIndeksleri(int ilk, int son, int adet)
+    {
+        const float pencere = 15f, duzEsik = 1f;  // ±15 m'de toplam en çok 1 derece: kol kaldırırken dönüş isteme.
+        var mesafeler = new float[yol.Noktalar.Count];
+        for (int i = 1; i < mesafeler.Length; i++)
+            mesafeler[i] = mesafeler[i - 1] + Vector3.Distance(yol.Noktalar[i - 1], yol.Noktalar[i]);
+        var degisimler = new float[yol.Noktalar.Count];
+        var adaylar = new List<int>();
+        var kalanlar = new List<int>();
+        for (int i = ilk; i <= son; i++)
+        {
+            int a = i, b = i;
+            while (a > 0 && mesafeler[i] - mesafeler[a] < pencere) a--;
+            while (b < mesafeler.Length - 1 && mesafeler[b] - mesafeler[i] < pencere) b++;
+            // Mutlak açıları topla; S biçimli bir pencerede zıt dönüşler birbirini silmesin.
+            for (int j = a + 1; j <= b; j++)
+                degisimler[i] += Vector3.Angle(yol.Yon(j - 1), yol.Yon(j));
+            if (degisimler[i] <= duzEsik) adaylar.Add(i);
+            else kalanlar.Add(i);
+        }
+        if (BolumlereYay(adaylar, mesafeler, adet, out var sonuc)) return sonuc;
+        Debug.LogWarning("Düz bölüm/8 m kenar payı yetersiz; en düşük eğrilikli noktalarla yedek dağılım kullanılacak.", this);
+        if (adaylar.Count < adet)
+        {
+            kalanlar.Sort((a, b) => {
+                int fark = degisimler[a].CompareTo(degisimler[b]);
+                return fark != 0 ? fark : a.CompareTo(b);
+            });
+            for (int i = 0; i < kalanlar.Count && adaylar.Count < adet; i++) adaylar.Add(kalanlar[i]);
+            adaylar.Sort();
+        }
+        int sayi = Mathf.Min(adet, adaylar.Count);
+        sayi -= sayi % 2;
+        if (sayi < adet) Debug.LogWarning("Yol kenar payları içinde seyirci sayısı tamamlanamadı.", this);
+        sonuc = new List<int>();
+        // Yetersizlikte önceki uyarılı yedek kural: düz adaylar, ardından en düşük eğrilikler.
+        for (int sira = 0; sira < sayi; sira++)
+        {
+            int yer = sayi == 1 ? adaylar.Count / 2 : Mathf.RoundToInt(sira * (adaylar.Count - 1f) / (sayi - 1));
+            sonuc.Add(adaylar[yer]);
+        }
+        return sonuc;
+    }
+
+    bool BolumlereYay(List<int> adaylar, float[] mesafeler, int adet, out List<int> sonuc)
+    {
+        sonuc = new List<int>();
+        var bolumler = new List<List<int>>();
+        for (int bas = 0; bas < adaylar.Count;)
+        {
+            int son = bas;
+            while (son + 1 < adaylar.Count && adaylar[son + 1] == adaylar[son] + 1) son++;
+            // Her ardışık düz bölümün iki ucundan gerçek yay mesafesiyle en az 8 m çıkar.
+            float ilkMesafe = mesafeler[adaylar[bas]] + 8f;
+            float sonMesafe = mesafeler[adaylar[son]] - 8f;
+            var bolum = new List<int>();
+            for (int j = bas; j <= son; j++)
+                if (mesafeler[adaylar[j]] >= ilkMesafe && mesafeler[adaylar[j]] <= sonMesafe)
+                    bolum.Add(adaylar[j]);
+            if (bolum.Count == 0)
+                Debug.LogWarning("8 m kenar payı sonrası kısa düz parça atlandı.", this);
+            else
+                bolumler.Add(bolum);
+            bas = son + 1;
+        }
+        if (bolumler.Count == 0 || bolumler.Count > adet) return false;
+
+        var uzunluklar = new float[bolumler.Count];
+        var paylar = new int[bolumler.Count];
+        var kotalar = new float[bolumler.Count];
+        float toplam = 0f;
+        int kapasite = 0;
+        for (int b = 0; b < bolumler.Count; b++)
+        {
+            var bolum = bolumler[b];
+            uzunluklar[b] = mesafeler[bolum[bolum.Count - 1]] - mesafeler[bolum[0]];
+            toplam += uzunluklar[b];
+            kapasite += bolum.Count;
+        }
+        if (kapasite < adet) return false;
+        // Önce her bölüme bir kişi; kalanları kullanılabilir uzunluğa orantılı,
+        // en büyük kalan yöntemiyle paylaştır. Aynı yol örneğini iki kez kullanma.
+        int kalan = adet - bolumler.Count, dagitilan = 0;
+        for (int b = 0; b < bolumler.Count; b++)
+        {
+            kotalar[b] = toplam > 0f ? kalan * uzunluklar[b] / toplam : 0f;
+            paylar[b] = 1 + Mathf.Min(bolumler[b].Count - 1, Mathf.FloorToInt(kotalar[b]));
+            dagitilan += paylar[b];
+        }
+        while (dagitilan < adet)
+        {
+            int secilen = -1;
+            for (int b = 0; b < bolumler.Count; b++)
+                if (paylar[b] < bolumler[b].Count &&
+                    (secilen < 0 || kotalar[b] - (paylar[b] - 1) > kotalar[secilen] - (paylar[secilen] - 1)))
+                    secilen = b;
+            if (secilen < 0) return false;
+            paylar[secilen]++;
+            dagitilan++;
+        }
+        for (int b = 0; b < bolumler.Count; b++)
+        {
+            var bolum = bolumler[b];
+            int onceki = -1;
+            for (int sira = 0; sira < paylar[b]; sira++)
+            {
+                float oran = paylar[b] == 1 ? .5f : sira / (float)(paylar[b] - 1);
+                float hedef = Mathf.Lerp(mesafeler[bolum[0]], mesafeler[bolum[bolum.Count - 1]], oran);
+                int yer = onceki + 1, sonYer = bolum.Count - (paylar[b] - sira);
+                while (yer < sonYer &&
+                    Mathf.Abs(mesafeler[bolum[yer + 1]] - hedef) < Mathf.Abs(mesafeler[bolum[yer]] - hedef))
+                    yer++;
+                sonuc.Add(bolum[yer]);
+                onceki = yer;
+            }
+        }
+        // Bölüm ve indeks sırası korunur: Start'taki sol/sağ dönüşümü tam adet/2 + adet/2 verir.
+        return true;
     }
 
     // Birleşik çevre meshlerinin kaba bounds'u yerine YolSusu ile aynı direk geometrisi.

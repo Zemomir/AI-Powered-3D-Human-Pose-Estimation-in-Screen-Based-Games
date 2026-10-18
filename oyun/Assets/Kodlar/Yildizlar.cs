@@ -8,6 +8,7 @@ public class Yildizlar : MonoBehaviour
     public Motor motor;
     public Ses ses;
     public Material malzeme;
+    public int desenSayisi = 1;  // Batın 2026-10-18: %30; her desen 3 sol + 3 orta + 3 sağ.
 
     public int Toplanan { get; private set; }
     public int Toplam => yildizlar.Count;
@@ -58,14 +59,14 @@ public class Yildizlar : MonoBehaviour
             yildizMalzemesi.EnableKeyword("_EMISSION");
             yildizMalzemesi.SetColor("_EmissionColor", new Color(0.30f, 0.21f, 0.03f));
         }
-        int sira = 0;
         int ilk = yol.BaslangicIndeksi + 30, son = yol.Noktalar.Count - 15;
         // Desen 9 yıldızda bir tamamlanır (3 sol, 3 orta, 3 sağ); yalnız tam desenler konur ki
-        // sol ve sağ yıldız sayısı eşit olsun: taraf karşılaştırması fizyoterapist için veri.
-        int adet = Mathf.Max(0, (son - ilk + 11) / 12) / 9 * 9;
-        for (int i = ilk; i < son && sira < adet; i += 12)
+        // Sol/sağ sayıları eşit kalır; taraflar yol boyunca sırayla değişir.
+        int adet = Mathf.Min(Mathf.Max(0, desenSayisi), Mathf.Max(0, son - ilk) / 9) * 9;
+        for (int sira = 0; sira < adet; sira++)
         {
-            int taraf = (sira / 3) % 3;
+            int i = Mathf.RoundToInt(Mathf.Lerp(ilk, son - 1, sira / (float)(adet - 1)));
+            int taraf = sira % 3;
             // Cross(up, ileri) sağdır; negatif değer sürücünün soludur.
             Vector3 yan = Vector3.Cross(Vector3.up, yol.Yon(i)).normalized;
             Vector3 konum = yol.Noktalar[i] + yan * ((taraf - 1) * 2.2f) + Vector3.up * 1.2f;
@@ -85,7 +86,6 @@ public class Yildizlar : MonoBehaviour
             if (taraf == 0) SolToplam++;
             else if (taraf == 1) OrtaToplam++;
             else SagToplam++;
-            sira++;
         }
         for (int e = 0; e < EfektSayisi; e++)
         {

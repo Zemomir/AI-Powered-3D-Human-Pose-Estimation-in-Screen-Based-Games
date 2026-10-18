@@ -1,7 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Elle çizilmiş sabit yol. Kontrol noktaları arasından Catmull-Rom eğrisiyle geçer.
+// Sabit yol: sürüş başlangıcından 99,54 m, ortada 89,07 m, sonda 84,54 m tam düz.
+// Kontrol noktaları arasından Catmull-Rom eğrisiyle geçer; düzlerde eşdoğrusal destekler var.
 // İlk aşamada yol çocuğa göre üretilmiyor (Batın, 2026-10-17: "şimdilik sadece hareket odaklı").
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class Yol : MonoBehaviour
@@ -11,12 +12,49 @@ public class Yol : MonoBehaviour
     public Material kenarMalzemesi;
     public Material bitisMalzemesi;
 
-    // Yumuşak virajlar: yarıçaplar ~40 m ve üstü, 8-12 m/s hızda rahat dönülür.
+    // R=80 m çemberlerden 7,5° aralıklı noktalar: sağa 60°, sonra sola 60°.
+    // Teğet doğrular 110/110/95 m; Catmull-Rom geçişleri her uçtan 10,4645 m alır.
+    // adim=1 için sürüş 482,54 m; geçişler dahil virajlar 104,70'er m, en dar R yaklaşık 53,03 m.
     public Vector3[] kontrol =
     {
-        new Vector3(0, 0, -40), new Vector3(0, 0, -20), new Vector3(0, 0, 0), new Vector3(0, 0, 40), new Vector3(15, 0, 80),
-        new Vector3(40, 0, 105), new Vector3(58, 0, 145), new Vector3(48, 0, 190), new Vector3(18, 0, 222),
-        new Vector3(8, 0, 270), new Vector3(28, 0, 318), new Vector3(30, 0, 360), new Vector3(30, 0, 380),
+        new Vector3(0, 0, -40),
+        new Vector3(0, 0, -20),
+        new Vector3(0, 0, 0),
+        new Vector3(0, 0, 20),
+        new Vector3(0, 0, 40),
+        new Vector3(0, 0, 60),
+        new Vector3(0, 0, 78.6065f),
+        new Vector3(0, 0, 89.071f),
+        new Vector3(0, 0, 99.5355f),
+        new Vector3(0, 0, 110),
+        new Vector3(0.68441f, 0, 120.4421f),
+        new Vector3(2.72593f, 0, 130.70552f),
+        new Vector3(6.08964f, 0, 140.61467f),
+        new Vector3(10.71797f, 0, 150),
+        new Vector3(16.53173f, 0, 158.70091f),
+        new Vector3(23.43146f, 0, 166.56854f),
+        new Vector3(31.29909f, 0, 173.46827f),
+        new Vector3(40f, 0, 179.28203f),
+        new Vector3(49.06252f, 0, 184.51428f),
+        new Vector3(58.12505f, 0, 189.74653f),
+        new Vector3(87.6314f, 0, 206.78203f),
+        new Vector3(117.13775f, 0, 223.81753f),
+        new Vector3(126.20027f, 0, 229.04978f),
+        new Vector3(135.26279f, 0, 234.28203f),
+        new Vector3(143.96371f, 0, 240.0958f),
+        new Vector3(151.83134f, 0, 246.99552f),
+        new Vector3(158.73106f, 0, 254.86315f),
+        new Vector3(164.54483f, 0, 263.56406f),
+        new Vector3(169.17316f, 0, 272.94939f),
+        new Vector3(172.53686f, 0, 282.85854f),
+        new Vector3(174.57838f, 0, 293.12197f),
+        new Vector3(175.26279f, 0, 303.56406f),
+        new Vector3(175.26279f, 0, 314.02857f),
+        new Vector3(175.26279f, 0, 324.49307f),
+        new Vector3(175.26279f, 0, 348.56406f),
+        new Vector3(175.26279f, 0, 373.56406f),
+        new Vector3(175.26279f, 0, 398.56406f),
+        new Vector3(175.26279f, 0, 418.56406f),
     };
 
     public float baslangicMesafesi = 20f;  // yol motorun arkasında da devam etsin, kamera boşluğa bakmasın
